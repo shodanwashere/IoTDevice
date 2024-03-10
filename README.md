@@ -1,4 +1,5 @@
 # IoTDevice
+[![Build](https://github.com/shodanwashere/IoTDevice/actions/workflows/main.yml/badge.svg)](https://github.com/shodanwashere/IoTDevice/actions/workflows/main.yml)
 ## Overview
 This project implements an IoT system with a client-server architecture demonstrated in the diagram below.
 An IoT **client** is a program - the `iot-device` program - that represents a sensorial device. This program is responsible for sending sensory data to the server. This program is controlled only by one user, and has a unique identifier (e.g., `alan` controls devices `alan:3` and `alan:1`).
