@@ -1,1 +1,2 @@
-**/target/**/**/*
+iot-device/target/**/**/*
+iot-server/target/**/**/*
