@@ -1,4 +1,4 @@
-package com.shodan.csiot;
+package com.shodan.csiot.iot_server;
 
 public class HelloWorld {
   public static void main(String[] args){
