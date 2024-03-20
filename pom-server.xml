@@ -5,10 +5,11 @@
     <groupId>com.shodan</groupId>
     <artifactId>csiot</artifactId>
     <version>1.0</version>
+    <relativePath>.</relativePath>
   </parent>
 
   <groupId>com.shodan.csiot</groupId>
-  <artifactId>iot-server</artifactId>
+  <artifactId>iotserver</artifactId>
   <packaging>jar</packaging>
   <version>1.0</version>
 
@@ -32,7 +33,7 @@
             <configuration>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>com.shodan.csiot.iot_server.IoTServer</mainClass>
+                  <mainClass>com.shodan.csiot.iotserver.IoTServer</mainClass>
                 </transformer>
               </transformers>
             </configuration>
