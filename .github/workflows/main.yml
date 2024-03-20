@@ -14,7 +14,7 @@ jobs:
         run: mvn package
       - name: Test Packages
         run: |
-          java -jar target/iot-server-1.0.jar
-          java -jar target/iot-device-1.0.jar
+          java -jar target/iotserver-1.0.jar
+          java -jar target/iotdevice-1.0.jar
       - name: Clean up the mess
         run: mvn clean
