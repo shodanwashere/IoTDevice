@@ -7,8 +7,8 @@
   <packaging>pom</packaging>
   <version>1.0</version>
   <modules>
-    <module>iot-device</module>
-    <module>iot-server</module>
+    <module>pom-client.xml</module>
+    <module>pom-server.xml</module>
   </modules>
 </project>
  
