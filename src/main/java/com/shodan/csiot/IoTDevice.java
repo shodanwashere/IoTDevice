@@ -1,4 +1,4 @@
-package com.shodan.csiot.iotdevice;
+package com.shodan.csiot;
 
 public class IoTDevice {
   public static void main(String[] args){

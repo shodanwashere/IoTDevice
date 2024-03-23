@@ -1,9 +1,16 @@
 package com.shodan.csiot.iotserver;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 
-public class ServerThread implements Runnable {
+public class ServerThread extends Thread {
   private Logger logger = null;
 
-  public ServerThread() {
+  private BufferedReader passwdFileBufferedReader;
+  private BufferedWriter passwdFileBufferedWriter;
+
+  public void set(BufferedReader passwdFileBufferedReader, BufferedWriter passwdFileBufferedWriter){
+    this.passwdFileBufferedReader = passwdFileBufferedReader;
+    this.passwdFileBufferedWriter = passwdFileBufferedWriter;
   }
 
   public void run() {

@@ -33,7 +33,7 @@
             <configuration>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>com.shodan.csiot.iotdevice.IoTDevice</mainClass>
+                  <mainClass>com.shodan.csiot.IoTDevice</mainClass>
                 </transformer>
               </transformers>
             </configuration>
