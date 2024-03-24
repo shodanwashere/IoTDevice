@@ -48,6 +48,7 @@ public class IoTServer {
 
       // this shutdown hook will mark all threads for shutdown, so they will shutdown safely.
       Runtime.getRuntime().addShutdownHook(new Thread(){
+        @Override
         public void run(){
           try {
             System.out.println("Got shutdown! Waiting for threads to die...");
@@ -82,15 +83,13 @@ public class IoTServer {
         threads.add(t); t.start();
         System.out.println("got connection at <client-ip>");
       }
-      while(true){}
-    } catch (FileNotFoundException e) {
-      System.err.println("Error: could not open the passwd file");
-      e.printStackTrace();
-      System.exit(1);
+      while(true){
+        // TODO: this will go up and integrate with the upper code block for the connection loop
+      }
     } catch (IOException e) {
       System.err.println("Error: could not open the passwd file");
       e.printStackTrace();
       System.exit(1);
-    }
+    } 
   }
 }
