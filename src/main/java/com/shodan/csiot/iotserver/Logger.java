@@ -22,4 +22,16 @@ public class Logger {
     log.append(m);
     System.out.println(log.toString());
   }
+
+  public void logErr(String m) {
+    Date now = new Date();
+    String timestamp = new SimpleDateFormat("HH:mm:ss", Locale.ENGLISH).format(now);
+    StringBuilder log = new StringBuilder("<");
+    log.append(threadName);
+    log.append("> [");
+    log.append(timestamp);
+    log.append("] ");
+    log.append(m);
+    System.err.println(log.toString());
+  }
 }
