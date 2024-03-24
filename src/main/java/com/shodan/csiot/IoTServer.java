@@ -36,36 +36,20 @@ public class IoTServer {
       System.exit(1);
     }
 
+    // open domains file
     File domainsFile = new File("domains");
     if(!domainsFile.exists()){
       lg.logErr("Error: domains file does not exist. Please create a file called 'domains' with at least one 'domain:dev1,dev2,...,devN' pair.");
       System.exit(1);
     }
 
-    // open domains file
-
-    // set up domains and password file writers and readers
-    FileReader     pwfFR;
-    FileWriter     pwfWR;
-    BufferedReader pwfBFR;
-    BufferedWriter pwfBWR;
-    FileReader     dsfFR;
-    FileWriter     dsfWR;
-    BufferedReader dsfBFR;
-    BufferedWriter dsfBWR;
     try{
-      pwfFR = new FileReader(passwdFile); pwfBFR = new BufferedReader(pwfFR);
-      pwfWR = new FileWriter(passwdFile); pwfBWR = new BufferedWriter(pwfWR);
-      dsfFR = new FileReader(domainsFile); dsfBFR = new BufferedReader(dsfFR);
-      dsfWR = new FileWriter(domainsFile); dsfBWR = new BufferedWriter(dsfWR);
-    
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
-      List<Thread> threads = new ArrayList<>();
+      List<ServerThread> threads = new ArrayList<>();
 
       ServerSocket srvSocket = new ServerSocket(port);
       lg.log("Listening on port "+port);
-      Boolean shutdownInitiated = false;
 
       // this shutdown hook will mark all threads for shutdown, so they will shutdown safely.
       Signal.handle(new Signal("INT"), new SignalHandler() {
@@ -73,18 +57,12 @@ public class IoTServer {
         public void handle(Signal signal) {
           try {
             lg.log("Got shutdown! Waiting for threads to die...");
-            for(Thread t: threads){
-              System.out.print("- "+t.getName()+" :: ");
+            for(ServerThread t: threads){
               if(t.isAlive()){ 
+                t.stopExecution();
                 t.join();
               }
-              System.out.println("STOPPED");
             }
-            lg.log("Threads dead. Closing file writers and readers.");
-            pwfBFR.close();
-            pwfBWR.close();
-            pwfFR.close();
-            pwfWR.close();
             lg.log("Closing server socket.");
             srvSocket.close();
             lg.log("Shutting down...");
@@ -100,9 +78,14 @@ public class IoTServer {
       {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
-        st.set(pwfBFR, pwfBWR, dsfBFR, dsfBWR, cliSocket, shutdownInitiated);
-        Thread t = new Thread(new ServerThread(), cliSocket.getRemoteSocketAddress().toString());
-        threads.add(t); t.start();
+        try{
+	  st.set(passwdFile, domainsFile, cliSocket);
+	} catch (Exception e) {
+	  lg.logErr(e.getMessage());
+	  cliSocket.close();
+	  continue;
+	}
+        threads.add(st); st.start();
         lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
       }
     } catch (IOException e) {
