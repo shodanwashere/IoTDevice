@@ -20,6 +20,9 @@ public class ServerThread extends Thread {
   private File passwd;
   private File domains;
 
+  private ObjectInputStream in;
+  private ObjectOutputStream out;
+
   private Map<String,String> usersAndPasswords = new HashMap<>();
   private Map<String,List<String>> domainUserPermissions = new HashMap<>();
   private Map<String,List<String>> domainDeviceList = new HashMap<>();
@@ -46,7 +49,7 @@ public class ServerThread extends Thread {
       String line;
       while((line = pbfr.readLine()) != null){
         String[] pair = line.split(":");
-	usersAndPasswords.put(new String(pair[0]), new String(pair[1])); // add passwd file entries to hashmap
+	      usersAndPasswords.put(new String(pair[0]), new String(pair[1])); // add passwd file entries to hashmap
       }
 
       pbfr.close();
@@ -61,35 +64,34 @@ public class ServerThread extends Thread {
       String line;
       while((line = dbfr.readLine()) != null) {
         String[] tuple = line.split(":", Integer.MAX_VALUE);
-	String domain = new String(tuple[0]);
-	String users = new String(tuple[1]);
-	String devices = new String(tuple[2]);
-	List<String> userList = new ArrayList<>();
-	List<String> deviceList = new ArrayList<>();
+	      String domain = new String(tuple[0]);
+	      String users = new String(tuple[1]);
+	      String devices = new String(tuple[2]);
+	      List<String> userList = new ArrayList<>();
+	      List<String> deviceList = new ArrayList<>();
 
-	if(!users.equals("")){
-	  for(String u: users.split(",")){
-	    userList.add(u);
-	  }
-	}
+	      if(!users.equals("")){
+	        for(String u: users.split(",")){
+	          userList.add(u);
+	        }
+	      }
 
-	if(!devices.equals("")){
-	  for(String d: devices.split(",")){
-	    deviceList.add(d);
-	  }
-	}
+	      if(!devices.equals("")){
+	        for(String d: devices.split(",")){
+	          deviceList.add(d);
+	        }
+	      }
 
-	domainUserPermissions.put(domain, userList);
-	domainDeviceList.put(domain, deviceList);
+	      domainUserPermissions.put(domain, userList);
+	      domainDeviceList.put(domain, deviceList);
       }
 
       dbfr.close();
       dfr.close();
     }
-
   }
 
-  private void createCommand(ObjectInputStream in, ObjectOutputStream out){
+  private void createCommand(){
     logger.log("Received CREATE - Beginning command processing");
     synchronized(domains){
       try {
@@ -110,20 +112,20 @@ public class ServerThread extends Thread {
           FileWriter domainsFileWriter = new FileWriter(domains);
           BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
 
-	  for(String domain: domainUserPermissions.keySet()){
-	    StringBuilder domainEntry = new StringBuilder(domain+":");
-	    List<String> userPermissions = domainUserPermissions.get(domain);
-	    domainEntry.append(String.join(",",userPermissions)+":");
-	    List<String> deviceList = domainDeviceList.get(domain);
-	    domainEntry.append(String.join(",",deviceList));
+	        for(String domain: domainUserPermissions.keySet()){
+	          StringBuilder domainEntry = new StringBuilder(domain+":");
+	          List<String> userPermissions = domainUserPermissions.get(domain);
+	          domainEntry.append(String.join(",",userPermissions)+":");
+	          List<String> deviceList = domainDeviceList.get(domain);
+	          domainEntry.append(String.join(",",deviceList));
 
-	    domainsFileBufferedWriter.write(domainEntry.toString());
-	    domainsFileBufferedWriter.newLine();
-	  }
+	          domainsFileBufferedWriter.write(domainEntry.toString());
+	          domainsFileBufferedWriter.newLine();
+	        }
 
-	  domainsFileBufferedWriter.close();
-	  domainsFileWriter.close();
-	  out.writeObject(Response.OK);
+	        domainsFileBufferedWriter.close();
+	        domainsFileWriter.close();
+	        out.writeObject(Response.OK);
         }
       } catch (IOException e) {
         out.writeObject(Response.NOK);
@@ -136,19 +138,29 @@ public class ServerThread extends Thread {
   public void run() {
     Thread.currentThread().setName(cliSocket.getRemoteSocketAddress().toString());
     logger = new Logger(Thread.currentThread().getName());
+
+    try {
+      this.out = new ObjectOutputStream(cliSocket.getOutputStream());
+      this.in = new ObjectInputStream(cliSocket.getInputStream());
+    } catch (Exception e) {
+      logger.logErr(e.getMessage());
+      try {
+        this.cliSocket.close();
+      } catch (Exception ee) {
+        ee.printStackTrace();
+      }
+      return;
+    }
+
     while(!shutdownInitiated) {
       try {
         logger.log("Listening for client commands"); 
-        ObjectInputStream in = new ObjectInputStream(cliSocket.getInputStream());
-        ObjectOutputStream out = new ObjectOutputStream(cliSocket.getOutputStream());
 
         Command clientCommand = (Command) in.readObject();
         switch(clientCommand){
-	        case CREATE: this.createCommand(in, out); break;
+	        case CREATE: this.createCommand(); break;
           case EOF: this.stopExecution(); break;
         }
-	in.close();
-	out.close();
       } catch(IOException e) {
         e.printStackTrace();
       } catch (ClassNotFoundException e) {
@@ -157,6 +169,8 @@ public class ServerThread extends Thread {
     }
     
     try {
+      in.close();
+      out.close();
       logger.log("Connection closed! Closing socket!");
       cliSocket.close();
     } catch (IOException e) {
