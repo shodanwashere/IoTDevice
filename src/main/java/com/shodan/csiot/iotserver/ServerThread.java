@@ -102,7 +102,7 @@ public class ServerThread extends Thread {
           log.append(" :: NOK");
         } else {
           List<String> users = new ArrayList<>();
-          users.add(new String("root"));
+          users.add(new String("root")); // TODO: replace 'root' with the username of the authenticated user
       
           List<String> devices = new ArrayList<>();
       
@@ -131,6 +131,62 @@ public class ServerThread extends Thread {
           log.append(" :: OK");
         }
       } catch (IOException e) {
+        out.writeObject(Response.NOK);
+        log.append(" :: NOK");
+      } finally {
+        logger.log(log.toString());
+        return;
+      }
+    }
+  }
+
+  private void addCommand(){
+    StringBuilder log = new StringBuilder("ADD");
+    synchronized(domains){
+      try {
+        String user1 = (String) in.readObject();
+        log.append(" "+user1);
+        String dm = (String) in.readObject();
+        log.append(" "+dm);
+
+        if(!(domainUserPermissions.containsKey(dm) && domainDeviceList.containsKey(dm))){
+          out.writeObject(Response.NODM);
+          log.append(" :: NODM");
+          logger.log(log.toString());
+          return;
+        }
+
+        // TODO: check if the authenticated user owns the 'dm' domain
+        // TODO: fail if the authenticated user does not own the 'dm'
+
+        synchronized(passwd){
+          if(!usersAndPasswords.containsKey(user1)){
+            throw new Exception("user does not exist");
+          }
+        }
+
+        List<String> dmUserPermissions = domainUserPermissions.get(dm);
+        if(!dmUserPermissions.contains(user1)){
+          dmUserPermissions.add(user1);
+        }
+
+        // now that RAM is updated, write changes to file
+        domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
+        FileWriter domainsFileWriter = new FileWriter(domains);
+        BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
+
+        for(String domain: domainUserPermissions.keySet()){
+          StringBuilder domainEntry = new StringBuilder(domain+":");
+          List<String> userPermissions = domainUserPermissions.get(domain);
+          domainEntry.append(String.join(",",userPermissions)+":");
+          List<String> deviceList = domainDeviceList.get(domain);
+          domainEntry.append(String.join(",",deviceList));
+
+          domainsFileBufferedWriter.write(domainEntry.toString());
+          domainsFileBufferedWriter.newLine();
+        }
+
+      } catch (Exception e) {
         out.writeObject(Response.NOK);
         log.append(" :: NOK");
       } finally {
