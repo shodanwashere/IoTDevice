@@ -10,6 +10,9 @@ import java.util.Map;
 import java.util.HashMap;
 import java.io.IOException;
 import java.net.Socket;
+import com.shodan.csiot.common.*;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 
 public class ServerThread extends Thread {
   private Logger logger;
@@ -86,10 +89,71 @@ public class ServerThread extends Thread {
 
   }
 
+  private void createCommand(ObjectInputStream in, ObjectOutputStream out){
+    logger.log("Received CREATE - Beginning command processing");
+    synchronized(domains){
+      try {
+        String dm = (String) in.readObject();
+        if(domainUserPermissions.containsKey(dm) || domainDeviceList.containsKey(dm)){
+          out.writeObject(Response.NOK);
+        } else {
+          List<String> users = new ArrayList<>();
+          users.add(new String("root"));
+      
+          List<String> devices = new ArrayList<>();
+      
+          domainUserPermissions.put(dm, users);
+          domainDeviceList.put(dm, devices);
+
+          // now that RAM is updated, write changes to file
+          domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
+          FileWriter domainsFileWriter = new FileWriter(domains);
+          BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
+
+	  for(String domain: domainUserPermissions.keySet()){
+	    StringBuilder domainEntry = new StringBuilder(domain+":");
+	    List<String> userPermissions = domainUserPermissions.get(domain);
+	    domainEntry.append(String.join(",",userPermissions)+":");
+	    List<String> deviceList = domainDeviceList.get(domain);
+	    domainEntry.append(String.join(",",deviceList));
+
+	    domainsFileBufferedWriter.write(domainEntry.toString());
+	    domainsFileBufferedWriter.newLine();
+	  }
+
+	  domainsFileBufferedWriter.close();
+	  domainsFileWriter.close();
+	  out.writeObject(Response.OK);
+        }
+      } catch (IOException e) {
+        out.writeObject(Response.NOK);
+      } finally { 
+        return;
+      }
+    }
+  }
+
   public void run() {
     Thread.currentThread().setName(cliSocket.getRemoteSocketAddress().toString());
     logger = new Logger(Thread.currentThread().getName());
     while(!shutdownInitiated) {
+      try {
+        logger.log("Listening for client commands"); 
+        ObjectInputStream in = new ObjectInputStream(cliSocket.getInputStream());
+        ObjectOutputStream out = new ObjectOutputStream(cliSocket.getOutputStream());
+
+        Command clientCommand = (Command) in.readObject();
+        switch(clientCommand){
+	        case CREATE: this.createCommand(in, out); break;
+          case EOF: this.stopExecution(); break;
+        }
+	in.close();
+	out.close();
+      } catch(IOException e) {
+        e.printStackTrace();
+      } catch (ClassNotFoundException e) {
+        e.printStackTrace();
+      }
     }
     
     try {
