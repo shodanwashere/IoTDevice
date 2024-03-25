@@ -92,12 +92,14 @@ public class ServerThread extends Thread {
   }
 
   private void createCommand(){
-    logger.log("Received CREATE - Beginning command processing");
+    StringBuilder log = new StringBuilder("CREATE");
     synchronized(domains){
       try {
         String dm = (String) in.readObject();
+        log.append(" "+dm);
         if(domainUserPermissions.containsKey(dm) || domainDeviceList.containsKey(dm)){
           out.writeObject(Response.NOK);
+          log.append(" :: NOK");
         } else {
           List<String> users = new ArrayList<>();
           users.add(new String("root"));
@@ -126,10 +128,13 @@ public class ServerThread extends Thread {
 	        domainsFileBufferedWriter.close();
 	        domainsFileWriter.close();
 	        out.writeObject(Response.OK);
+          log.append(" :: OK");
         }
       } catch (IOException e) {
         out.writeObject(Response.NOK);
-      } finally { 
+        log.append(" :: NOK");
+      } finally {
+        logger.log(log.toString());
         return;
       }
     }
