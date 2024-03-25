@@ -109,24 +109,8 @@ public class ServerThread extends Thread {
           domainUserPermissions.put(dm, users);
           domainDeviceList.put(dm, devices);
 
-          // now that RAM is updated, write changes to file
-          domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
-          FileWriter domainsFileWriter = new FileWriter(domains);
-          BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
+          this.updateDomains();
 
-	        for(String domain: domainUserPermissions.keySet()){
-	          StringBuilder domainEntry = new StringBuilder(domain+":");
-	          List<String> userPermissions = domainUserPermissions.get(domain);
-	          domainEntry.append(String.join(",",userPermissions)+":");
-	          List<String> deviceList = domainDeviceList.get(domain);
-	          domainEntry.append(String.join(",",deviceList));
-
-	          domainsFileBufferedWriter.write(domainEntry.toString());
-	          domainsFileBufferedWriter.newLine();
-	        }
-
-	        domainsFileBufferedWriter.close();
-	        domainsFileWriter.close();
 	        out.writeObject(Response.OK);
           log.append(" :: OK");
         }
@@ -171,21 +155,10 @@ public class ServerThread extends Thread {
         }
 
         // now that RAM is updated, write changes to file
-        domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
-        FileWriter domainsFileWriter = new FileWriter(domains);
-        BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
+        this.updateDomains();
 
-        for(String domain: domainUserPermissions.keySet()){
-          StringBuilder domainEntry = new StringBuilder(domain+":");
-          List<String> userPermissions = domainUserPermissions.get(domain);
-          domainEntry.append(String.join(",",userPermissions)+":");
-          List<String> deviceList = domainDeviceList.get(domain);
-          domainEntry.append(String.join(",",deviceList));
-
-          domainsFileBufferedWriter.write(domainEntry.toString());
-          domainsFileBufferedWriter.newLine();
-        }
-
+        out.writeObject(Response.OK);
+        log.append(" :: OK");
       } catch (Exception e) {
         out.writeObject(Response.NOK);
         log.append(" :: NOK");
@@ -194,6 +167,27 @@ public class ServerThread extends Thread {
         return;
       }
     }
+  }
+
+  private void updateDomains() throws Exception{ // do not call this method without first performing synchronize(domains)
+    // now that RAM is updated, write changes to file
+    domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
+    FileWriter domainsFileWriter = new FileWriter(domains);
+    BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
+
+    for(String domain: domainUserPermissions.keySet()){
+      StringBuilder domainEntry = new StringBuilder(domain+":");
+      List<String> userPermissions = domainUserPermissions.get(domain);
+      domainEntry.append(String.join(",",userPermissions)+":");
+      List<String> deviceList = domainDeviceList.get(domain);
+      domainEntry.append(String.join(",",deviceList));
+
+      domainsFileBufferedWriter.write(domainEntry.toString());
+      domainsFileBufferedWriter.newLine();
+    }
+
+    domainsFileBufferedWriter.close();
+	  domainsFileWriter.close();
   }
 
   public void run() {
