@@ -79,14 +79,14 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-	  st.set(passwdFile, domainsFile, cliSocket);
-	} catch (Exception e) {
-	  lg.logErr(e.getMessage());
-	  cliSocket.close();
-	  continue;
-	}
-        threads.add(st); st.start();
-        lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
+	        st.set(passwdFile, domainsFile, cliSocket);
+          threads.add(st); st.start();
+          lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
+	      } catch (Exception e) {
+	        lg.logErr(e.getMessage());
+	        cliSocket.close();
+	        continue;
+	      }
       }
     } catch (IOException e) {
       System.exit(1);
