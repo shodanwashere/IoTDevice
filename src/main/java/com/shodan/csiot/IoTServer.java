@@ -83,7 +83,7 @@ public class IoTServer {
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {
-	        lg.logErr(e.getMessage());
+	        e.printStackTrace();
 	        cliSocket.close();
 	        continue;
 	      }
