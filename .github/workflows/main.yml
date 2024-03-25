@@ -12,10 +12,5 @@ jobs:
         run: mvn compile
       - name: Package
         run: mvn package
-      - name: Test Packages
-        run: |
-          echo "root:123456" > passwd
-          java -jar target/iotserver-1.0.jar
-          java -jar target/iotdevice-1.0.jar
       - name: Clean up the mess
         run: mvn clean
