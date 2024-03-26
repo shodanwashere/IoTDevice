@@ -23,6 +23,7 @@ public class ServerThread extends Thread {
   private File domains;
 
   private List<UserDevicePair> currentlyLoggedInUDPs;
+  private List<Device> devices;
 
   private ObjectInputStream in;
   private ObjectOutputStream out;
@@ -40,9 +41,10 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domains, List<UserDevicePair> currentlyLoggedInUDPs, Socket cliSocket) throws Exception {
+  public void set(File passwd, File domains, List<UserDevicePair> currentlyLoggedInUDPs, List<Device> devices, Socket cliSocket) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
+    this.devices = devices;
     this.passwd = passwd;
     this.domains = domains;
     this.currentlyLoggedInUDPs = currentlyLoggedInUDPs;
@@ -58,11 +60,11 @@ public class ServerThread extends Thread {
           String user = new String(tuple[0]);
           String pass = new String(tuple[1]);
 	      usersAndPasswords.put(user, pass); // add passwd file entries to hashmap
-          String devices = new String(tuple[2]);
+          String deviceIDs = new String(tuple[2]);
           List<String> deviceList = new ArrayList<>();
 
           if(!devices.equals("")){
-            for(String d: devices.split(",")){
+            for(String d: deviceIDs.split(",")){
               deviceList.add(d);
             }
           }
@@ -84,7 +86,7 @@ public class ServerThread extends Thread {
         String[] tuple = line.split(":", Integer.MAX_VALUE);
 	      String domain = new String(tuple[0]);
 	      String users = new String(tuple[1]);
-	      String devices = new String(tuple[2]);
+	      String deviceIDs = new String(tuple[2]);
 	      List<String> userList = new ArrayList<>();
 	      List<String> deviceList = new ArrayList<>();
 
@@ -95,7 +97,7 @@ public class ServerThread extends Thread {
 	      }
 
 	      if(!devices.equals("")){
-	        for(String d: devices.split(",")){
+	        for(String d: deviceIDs.split(",")){
 	          deviceList.add(d);
 	        }
 	      }

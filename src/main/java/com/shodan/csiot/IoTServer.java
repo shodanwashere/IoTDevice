@@ -59,6 +59,32 @@ public class IoTServer {
       // we'll use this to keep track of how many threads are running
       List<ServerThread> threads = new ArrayList<>();
       List<UserDevicePair> currentlyLoggedInUDPs = new ArrayList<>();
+      // set up currently registered devices
+      List<Device> devices = new ArrayList<>();
+
+      FileReader dfr = new FileReader(domainsFile);
+      BufferedReader dbr = new BufferedReader(dfr);
+
+      String dLine;
+      while((dLine = dbr.readLine()) != null){
+        String[] domainEntry = dLine.split(":",Integer.MAX_VALUE);
+        String devicesInDomain = new String(domainEntry[2]);
+        if(!devicesInDomain.equals("")){
+          String domainName = new String(domainEntry[0]);
+          String[] deviceArray = devicesInDomain.split(",");
+          for(String d: deviceArray){
+            devices.add(new Device(d, domainName));
+          }
+        }
+      }
+
+      dbr.close();
+      dfr.close();
+
+      System.out.println("Currently active devices: "); if(devices.isEmpty()) System.out.println("No devices.");
+      for(Device d: devices){
+        System.out.printf("-\tID: %s\n\tDomain: %s\n", d.getId(), d.getDomain());
+      }
 
       ServerSocket srvSocket = new ServerSocket(port);
 
@@ -94,7 +120,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, cliSocket);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, devices, cliSocket);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {
