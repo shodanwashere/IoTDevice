@@ -5,5 +5,12 @@ public enum Response {
   NODM,
   NOPERM,
   NOK,
-  NODATA
+  NODATA,
+  WRONGPWD,
+  OKNEWUSER,
+  OKUSER,
+  NOKDEVID,
+  OKDEVID,
+  NOKTESTED,
+  OKTESTED
 }
