@@ -22,11 +22,6 @@ public class ServerThread extends Thread {
   private ObjectInputStream in;
   private ObjectOutputStream out;
 
-  private Map<String,String> usersAndPasswords = new HashMap<>();
-  private Map<String,List<String>> userDeviceList = new HashMap<>();
-  private Map<String,List<String>> domainUserPermissions = new HashMap<>();
-  private Map<String,List<String>> domainDeviceList = new HashMap<>();
-
   private Socket cliSocket;
 
   private volatile boolean shutdownInitiated = false;
@@ -223,8 +218,7 @@ public class ServerThread extends Thread {
 
         String extension = new String(splitFilename[1]);
 
-        List<String> validExtensions = new ArrayList<String>(Arrays.asList("jpg","png","bmp","webp"));
-        if(validExtensions.contains(extension)){
+        if(extension.equals("jpg")){
           out.writeObject(Response.OK);
           log.append(" :: OK");
           // prepare to receive file
@@ -363,6 +357,94 @@ public class ServerThread extends Thread {
           } catch (Exception e) {
             out.writeObject(Response.NOK);
             log.append(" :: NOK - "+e.getMessage());
+          } finally {
+            logger.log(log.toString());
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  private void receiveImageCommand(){
+    StringBuilder log = new StringBuilder("RI");
+    synchronized (deviceFiles) {
+      synchronized (domains){
+        synchronized (passwd) {
+          try {
+            // first, check if the device exists!
+            String devIdentifier = (String) in.readObject();
+            String[] splitDevIdentifier = devIdentifier.split(":");
+            String username = new String(splitDevIdentifier[0]);
+            String deviceID = new String(splitDevIdentifier[1]);
+            log.append(" "+devIdentifier);
+
+            if(!devices.containsKey(deviceID) || !users.containsKey(username)){
+              out.writeObject(Response.NOID);
+              log.append(" :: NOID");
+            } else {
+              User owner = users.get(username);
+              Device dev = devices.get(deviceID);
+              if(!owner.getOwnedDevices().contains(dev)) {
+                out.writeObject(Response.NOID);
+                log.append(" :: NOID");
+              } else {
+                // check if user has read permissions for this device's domain
+                Domain dom = null; boolean found = false;
+                for(String domID: domains.keySet()){
+                  dom = domains.get(domID);
+                  if(dom.getRegisteredDevices().contains(dev)){
+                    found = true; break;
+                  }
+                }
+                if(found){
+                  if(!dom.getMembers().contains(currUDP.getUser())){
+                    out.writeObject(Response.NOPERM);
+                    log.append(" :: NOPERM");
+                  } else {
+                    // check if the device even HAS data stored
+                    if(!deviceFiles.containsKey(deviceID)){
+                      out.writeObject(Response.NODATA);
+                      log.append(" :: NODATA");
+                    } else {
+                      File deviceImg = new File(deviceFiles.get(deviceID).getAbsolutePath()+"/img.jpg");
+                      if(!deviceImg.exists()){
+                        out.writeObject(Response.NODATA);
+                        log.append(" :: NODATA");
+                      } else {
+                        out.writeObject(Response.OK);
+                        log.append(" :: OK");
+                        // all checks verified. time to send the file
+                        long imgSize = deviceImg.length();
+                        long bytesRemaining = imgSize;
+                        out.writeObject(imgSize);
+                        FileInputStream fin = new FileInputStream(deviceImg);
+                        InputStream finput = new BufferedInputStream(fin);
+
+                        byte[] buffer = new byte[1024];
+                        int bytesRead;
+                        while(bytesRemaining>0){
+                          bytesRead=finput.read(buffer);
+                          out.writeObject(bytesRead);
+                          out.write(buffer, 0, bytesRead);
+                          out.flush();
+                          bytesRemaining -= bytesRead;
+                        }
+
+                        finput.close();
+                        fin.close();
+                      }
+                    }
+                  }
+                } else {
+                  throw new Exception("device is not registered in any domain");
+                }
+              }
+            }
+
+          } catch (Exception e) {
+            out.writeObject(Response.NOK);
+            log.append(" :: NOK");
           } finally {
             logger.log(log.toString());
             return;
@@ -602,6 +684,7 @@ public class ServerThread extends Thread {
           case ET: this.sendTemperatureCommand(); break;
           case EI: this.sendImageCommand(); break;
           case RT: this.receiveTemperatureCommand(); break;
+          case RI: this.receiveImageCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();

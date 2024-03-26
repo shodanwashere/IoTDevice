@@ -134,6 +134,7 @@ public class IoTDevice {
         case "ET": sendTemperatureCommand(command, in, out); break;
         case "EI": sendImageCommand(command, in, out); break;
         case "RT": receiveTemperatureCommand(command, in, out); break;
+        case "RI": receiveImageCommand(command, in, out); break;
         case "HELP": help(); break;
         case "CLEAR": clearScreen(); break;
         case "EXIT": exitCommand(in, out); return;
@@ -362,6 +363,12 @@ public class IoTDevice {
     return;
   }
 
+  /**
+   * Implements the EI command on the client-side
+   * @param command String containing the EI keyword and the image filename
+   * @param in Socket input stream
+   * @param out Socket output stream
+   */
   public static void sendImageCommand(String command, ObjectInputStream in, ObjectOutputStream out){
     String[] splitCommand = command.split(" ");
 
@@ -425,6 +432,76 @@ public class IoTDevice {
 
       return;
     }
+  }
+
+  public static void receiveImageCommand(String command, ObjectInputStream in, ObjectOutputStream out){
+    String[] splitCommand = command.split(" ");
+
+    if(splitCommand.length != 2){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: RI <user>:<dev-id> - Receive the device image from the server, as long as you have permissions");
+    } else {
+      String deviceIdentifier = new String(splitCommand[1]);
+
+      try{
+        out.writeObject(Command.RI);
+        Thread.sleep(200);
+        out.writeObject(deviceIdentifier);
+        Thread.sleep(200);
+        Response r = (Response) in.readObject();
+        switch (r) {
+          case OK: {
+            String[] splitDeviceIdentifier = deviceIdentifier.split(":");
+            StringBuilder filename = new StringBuilder(splitDeviceIdentifier[0]);
+            filename.append("-");
+            filename.append(splitDeviceIdentifier[1]);
+            filename.append(".jpg");
+
+            File download = new File(filename.toString());
+            if(download.exists()) download.delete();
+            download.createNewFile();
+
+            Long imageSize = (Long) in.readObject();
+            long bytesRemaining = imageSize;
+
+            FileOutputStream fout = new FileOutputStream(download);
+            OutputStream foutput  = new BufferedOutputStream(fout);
+
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            try{
+              while(bytesRemaining>0){
+                bytesRead = (Integer) in.readObject();
+                in.read(buffer, 0, bytesRead);
+                foutput.write(buffer, 0, bytesRead);
+                foutput.flush();
+                bytesRemaining -= bytesRead;
+              }
+            } catch(EOFException e) {
+              // do nothing
+            }
+
+            System.out.println(" "+imageSize+" bytes -> "+download.getName());
+
+            foutput.close();
+            fout.close();
+
+            break;
+          }
+          case NOID: System.err.println("Error: device "+deviceIdentifier+" does not exist"); break;
+          case NOPERM: System.err.println("Error: permission denied"); break;
+          case NODATA: System.err.println("Error: device "+deviceIdentifier+" has not published any images"); break;
+        }
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicate with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing
+      } catch (InterruptedException e) {
+        // do nothing
+      }
+    }
+
+    return;
   }
 
   /**
