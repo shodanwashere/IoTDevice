@@ -12,5 +12,6 @@ public enum Response {
   NOKDEVID,
   OKDEVID,
   NOKTESTED,
-  OKTESTED
+  OKTESTED,
+  NOID
 }
