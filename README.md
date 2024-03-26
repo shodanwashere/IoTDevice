@@ -19,7 +19,7 @@ The **server** application, `iot-server`, is a program that allows multiple clie
 This project uses Maven to build and is implemented using aggregation (multi-modules). Building is fairly simple:
 
 ```
-$ mvn package
+$ mvn compile && mvn package
 ```
 
 Once that is done, you will find the project's jar files inside the `target` directory.
