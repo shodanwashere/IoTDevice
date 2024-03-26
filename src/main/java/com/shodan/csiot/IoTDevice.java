@@ -122,6 +122,7 @@ public class IoTDevice {
         case "CREATE": createCommand(command, in, out); break;
         case "ADD": addCommand(command, in, out); break;
         case "RD": registerDeviceCommand(command, in, out); break;
+        case "ET": sendTemperatureCommand(command, in, out); break;
         case "HELP": help(); break;
         case "CLEAR": clearScreen(); break;
         case "EXIT": exitCommand(in, out); return;
@@ -219,7 +220,37 @@ public class IoTDevice {
           case NOK : System.err.println("Error: device couldnt be registered"); break;
         }
       } catch (IOException e) {
-        System.err.println("Error: failed to communicated with server");
+        System.err.println("Error: failed to communicate with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing
+      } catch (InterruptedException e) {
+        // do nothing
+      }
+    }
+    return;
+  }
+
+  public static void sendTemperatureCommand(String command, ObjectInputStream in, ObjectOutputStream out){
+    String[] splitCommand = command.split(" ");
+
+    if (splitCommand.length != 2){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: ET <float> - Send temperature data to the server");
+    } else {
+      String temp = new String(splitCommand[1]);
+
+      try {
+        out.writeObject(Command.ET); out.flush();
+        Thread.sleep(200);
+        out.writeObject(temp); out.flush();
+        Thread.sleep(200);
+        Response r = (Response) in.readObject();
+        switch(r) {
+          case OK: System.out.println("Temperature saved on server"); break;
+          case NOK: System.err.println("Error: server failed to save temperature"); break;
+        }
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicate with server");
       } catch (ClassNotFoundException e) {
         // do nothing
       } catch (InterruptedException e) {
