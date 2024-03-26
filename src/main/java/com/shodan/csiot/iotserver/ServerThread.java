@@ -26,6 +26,7 @@ public class ServerThread extends Thread {
   private Map<String, User> users;
   private Map<String, Device> devices;
   private Map<String, Domain> domains;
+  private Map<String, File> deviceFiles;
 
 
   private ObjectInputStream in;
@@ -44,11 +45,12 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Socket cliSocket) throws Exception {
+  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
     this.passwd = passwd;
     this.domainsFile = domainsFile;
+    this.deviceFiles = deviceFiles;
     this.currentlyLoggedInUDPs = currentlyLoggedInUDPs;
 
     this.users = users;
@@ -179,6 +181,52 @@ public class ServerThread extends Thread {
         logger.log(log.toString());
         return;
       }
+    }
+  }
+
+  private void sendTemperatureCommand(){
+    StringBuilder log = new StringBuilder("ET");
+    synchronized (deviceFiles) {
+      try{
+        String temp = (String) in.readObject();
+        Float aTemp = Float.parseFloat(temp);
+
+        // open a file
+        File deviceDir = deviceFiles.get(currUDP.getDevice().getId());
+        File deviceTempFile = new File(deviceDir.getAbsolutePath()+"/temp");
+        if(deviceTempFile.exists()) deviceTempFile.delete();
+        deviceTempFile.createNewFile();
+
+        currUDP.getDevice().setTemperature(aTemp);
+
+        // model updated. now, write to file
+        FileWriter dtfw = new FileWriter(deviceTempFile);
+        BufferedWriter dtfbw = new BufferedWriter(dtfw);
+
+        dtfbw.write(temp);
+        dtfbw.flush();
+
+        dtfbw.close();
+        dtfw.close();
+        out.writeObject(Response.OK);
+        log.append(" :: OK");
+      } catch(Exception e) {
+        out.writeObject(Response.NOK);
+        log.append(" :: NOK");
+      } finally {
+        logger.log(log.toString());
+        return;
+      }
+    }
+  }
+
+  // do not call this method without first performing synchronize(deviceFiles)
+  private void updateDeviceFiles(){
+    for(String d: devices.keySet()){
+      Device dev = devices.get(d);
+      File deviceDir = new File("devices/"+dev.getId()+"/");
+      if(!deviceDir.exists()) deviceDir.mkdirs();
+      deviceFiles.put(dev.getId(), deviceDir);
     }
   }
 
@@ -318,6 +366,9 @@ public class ServerThread extends Thread {
         thisUser.addDevice(newDevice);
         logger.log("AUTH :: New device registered.");
         out.writeObject(Response.OKDEVID);
+        synchronized (deviceFiles) {
+          updateDeviceFiles();
+        }
       }
       updatePasswd();
     }
@@ -396,6 +447,7 @@ public class ServerThread extends Thread {
           case EOF: this.stopExecution(); break;
           case ADD: this.addCommand(); break;
           case RD: this.registerDeviceCommand(); break;
+          case ET: this.sendTemperatureCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();

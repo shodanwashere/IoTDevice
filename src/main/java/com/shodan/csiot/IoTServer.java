@@ -56,13 +56,12 @@ public class IoTServer {
       System.exit(1);
     }
 
-
-
     try{
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
       List<ServerThread> threads = new ArrayList<>();
       List<UserDevicePair> currentlyLoggedInUDPs = new ArrayList<>();
+      Map<String, File> deviceFiles = new HashMap<>();
       // set up currently registered devices
       Map<String, User> users = new HashMap<>();
       Map<String, Device> devices = new HashMap<>();
@@ -119,7 +118,9 @@ public class IoTServer {
           String[] deviceIDs = domainDeviceIDs.split(",");
           for(String d: deviceIDs){
             if(devices.containsKey(d)){
-              newDomain.addDevice(devices.get(d));
+              Device dev = devices.get(d);
+              newDomain.addDevice(dev);
+
             }
           }
         }
@@ -129,6 +130,13 @@ public class IoTServer {
 
       dbr.close();
       dfr.close();
+
+      for(String d: devices.keySet()){
+        Device dev = devices.get(d);
+        File deviceDir = new File("devices/"+dev.getId()+"/");
+        if(!deviceDir.exists()) deviceDir.mkdirs();
+        deviceFiles.put(dev.getId(), deviceDir);
+      }
 
       // open server socket
       ServerSocket srvSocket = new ServerSocket(port);
@@ -165,7 +173,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, cliSocket);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, deviceFiles, cliSocket);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {
