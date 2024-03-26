@@ -1,5 +1,5 @@
 package com.shodan.csiot;
-import java.io.File;
+import java.io.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.net.Socket;
@@ -7,9 +7,6 @@ import sun.misc.Signal;
 import sun.misc.SignalHandler;
 import com.shodan.csiot.common.*;
 import java.util.Scanner;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.IOException;
 
 public class IoTDevice {
   public static Socket clientSocket;  
@@ -32,6 +29,7 @@ public class IoTDevice {
     System.out.println("- RT <dm>            - Receive latest temperature data from devices in the 'dm' domain if you have permissions");
     System.out.println("- RI <user>:<dev-id> - Receive the device image from the server, as long as you have permissions");
     System.out.println("- HELP               - Display this message");
+    System.out.println("- CLEAR              - Clear the screen");
     System.out.println("- EXIT               - Terminate connection");
   }
 
@@ -40,22 +38,33 @@ public class IoTDevice {
     try {
       out.writeObject(username);
       // ask user for password
-      System.out.print("Password: ");
-      String password = input.nextLine();
+
+      // using the console class! by using the console class to read the password, we read input
+      // while masking the output, allowing for more secure logins!
+      String password;
+      Console console = System.console();
+      if(console != null) {
+        password = new String(console.readPassword("Password: "));
+      } else {
+        return false;
+      }
 
       out.writeObject(password);
+      out.flush();
       Response r1 = (Response) in.readObject();
       switch(r1){
         case OKUSER:
-        case OKNEWUSER: break;
+        case OKNEWUSER: System.out.println("Password authentication passed."); break;
         case WRONGPWD: System.err.println("Password authentication failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
       }
 
-      out.writeObject(deviceID.toString());
+      String toSend = deviceID.toString();
+      out.writeObject(toSend);
+      out.flush();
       Response r2 = (Response) in.readObject();
       switch(r2){
-        case OKDEVID: break;
+        case OKDEVID: System.out.println("Device authentication passed."); break;
         case NOKDEVID: System.err.println("Device authentication failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
       }
@@ -68,12 +77,14 @@ public class IoTDevice {
               .getPath();
       String executableName = executablePath.substring(executablePath.lastIndexOf("/") + 1);
       out.writeObject(executableName);
+      out.flush();
       File exe = new File(executablePath);
       out.writeObject(exe.length());
+      out.flush();
 
       Response r3 = (Response) in.readObject();
       switch(r3){
-        case OKTESTED: break;
+        case OKTESTED: System.out.println("File authentication passed."); break;
         case NOKTESTED: System.err.println("File authentication failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
       }
@@ -82,6 +93,11 @@ public class IoTDevice {
       return false;
     }
     return true;
+  }
+
+  public static void clearScreen() {
+    System.out.print("\033[H\033[2J");
+    System.out.flush();
   }
 
   /**
@@ -105,7 +121,9 @@ public class IoTDevice {
       switch(keyword){
         case "CREATE": createCommand(command, in, out); break;
         case "ADD": addCommand(command, in, out); break;
+        case "RD": registerDeviceCommand(command, in, out); break;
         case "HELP": help(); break;
+        case "CLEAR": clearScreen(); break;
         case "EXIT": exitCommand(in, out); return;
         default: System.out.println("Not implemented yet"); break;
       }
@@ -164,6 +182,7 @@ public class IoTDevice {
         Response r = (Response) in.readObject();
         switch(r){
           case OK : System.out.println("User "+user+" added to domain "+dm); break;
+          case NOPERM: System.err.println("Error: you do not have permissions for this operation."); break;
           case NODM: System.err.println("Error: domain "+dm+" doesn't exist."); break;
           case NOK : System.err.println("Error: user could not be added to domain"); break;
         }
@@ -171,6 +190,38 @@ public class IoTDevice {
         System.err.println("Error: failed to communicate with server");
       } catch (ClassNotFoundException e) {
         // do nothing, because this class cant "not be found"
+      } catch (InterruptedException e) {
+        // do nothing
+      }
+    }
+    return;
+  }
+
+  public static void registerDeviceCommand(String command, ObjectInputStream in, ObjectOutputStream out){
+    String[] splitCommand = command.split(" ");
+
+    if(splitCommand.length != 2){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: RD <dm> - Register the current device in the 'dm' domain");
+    } else {
+      String dm = new String(splitCommand[1]);
+
+      try{
+        out.writeObject(Command.RD);
+        Thread.sleep(200);
+        out.writeObject(dm);
+        Thread.sleep(200);
+        Response r = (Response) in.readObject();
+        switch(r) {
+          case OK : System.out.println("Registered the device to domain "+dm); break;
+          case NOPERM: System.err.println("Error: you do not have permissions for this operation."); break;
+          case NODM: System.err.println("Error: domain "+dm+" doesn't exist."); break;
+          case NOK : System.err.println("Error: device couldnt be registered"); break;
+        }
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicated with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing
       } catch (InterruptedException e) {
         // do nothing
       }
