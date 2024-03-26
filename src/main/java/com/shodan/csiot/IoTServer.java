@@ -1,6 +1,7 @@
 package com.shodan.csiot;
 
 import com.shodan.csiot.iotserver.*;
+import com.shodan.csiot.common.UserDevicePair;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -57,6 +58,7 @@ public class IoTServer {
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
       List<ServerThread> threads = new ArrayList<>();
+      List<UserDevicePair> currentlyLoggedInUDPs = new ArrayList<>();
 
       ServerSocket srvSocket = new ServerSocket(port);
 
@@ -92,7 +94,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-	        st.set(passwdFile, domainsFile, cliSocket);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, cliSocket);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {

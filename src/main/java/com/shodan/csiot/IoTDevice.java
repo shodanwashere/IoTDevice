@@ -1,4 +1,5 @@
 package com.shodan.csiot;
+import java.io.File;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.net.Socket;
@@ -13,6 +14,10 @@ import java.io.IOException;
 public class IoTDevice {
   public static Socket clientSocket;  
   public static Scanner input = new Scanner(System.in);
+
+  private static String username;
+  private static Integer deviceID;
+
 
   /**
    * Displays a help message to the CLI
@@ -30,6 +35,55 @@ public class IoTDevice {
     System.out.println("- EXIT               - Terminate connection");
   }
 
+  private static boolean authenticationRoutine(ObjectInputStream in, ObjectOutputStream out){
+    // send user
+    try {
+      out.writeObject(username);
+      // ask user for password
+      System.out.print("Password: ");
+      String password = input.nextLine();
+
+      out.writeObject(password);
+      Response r1 = (Response) in.readObject();
+      switch(r1){
+        case OKUSER:
+        case OKNEWUSER: break;
+        case WRONGPWD: System.err.println("Password authentication failed."); return false;
+        case NOK: System.err.println("Server communication failed."); return false;
+      }
+
+      out.writeObject(deviceID.toString());
+      Response r2 = (Response) in.readObject();
+      switch(r2){
+        case OKDEVID: break;
+        case NOKDEVID: System.err.println("Device authentication failed."); return false;
+        case NOK: System.err.println("Server communication failed."); return false;
+      }
+
+      String executablePath = IoTDevice.class
+              .getProtectionDomain()
+              .getCodeSource()
+              .getLocation()
+              .toURI()
+              .getPath();
+      String executableName = executablePath.substring(executablePath.lastIndexOf("/") + 1);
+      out.writeObject(executableName);
+      File exe = new File(executablePath);
+      out.writeObject(exe.length());
+
+      Response r3 = (Response) in.readObject();
+      switch(r3){
+        case OKTESTED: break;
+        case NOKTESTED: System.err.println("File authentication failed."); return false;
+        case NOK: System.err.println("Server communication failed."); return false;
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+      return false;
+    }
+    return true;
+  }
+
   /**
    * Method that deals with the entire command line interface
    * 
@@ -39,6 +93,10 @@ public class IoTDevice {
   public static void commandLineInterface(ObjectInputStream in, ObjectOutputStream out){
     // TODO: prepare to authenticate with server
     // TODO: Failover if authentication fails
+    if(!authenticationRoutine(in, out)){
+      exitCommand(in, out);
+      return;
+    }
     help();
     while(true){
       System.out.printf("> ");
@@ -146,17 +204,12 @@ public class IoTDevice {
       System.exit(1);
     }
 
-    int deviceID = 0;
     try {
+      username = new String(args[2]);
       deviceID = Integer.parseInt(args[1]);
-    } catch (NumberFormatException e){
-      System.err.println("Error: device id must be an integer");
-      System.exit(1);
-    }
 
-    String address = null;
-    int port = 12345;
-    try {
+      String address = null;
+      int port = 12345;
       String[] addressAndPort = args[0].split(":");
       address = new String(addressAndPort[0]);
       if(addressAndPort.length == 2){
