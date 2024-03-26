@@ -9,7 +9,7 @@ import com.shodan.csiot.common.*;
 import java.util.Scanner;
 
 /**
- * 
+ *
  */
 public class IoTDevice {
   public static Socket clientSocket;  
@@ -132,6 +132,7 @@ public class IoTDevice {
         case "ADD": addCommand(command, in, out); break;
         case "RD": registerDeviceCommand(command, in, out); break;
         case "ET": sendTemperatureCommand(command, in, out); break;
+        case "EI": sendImageCommand(command, in, out); break;
         case "RT": receiveTemperatureCommand(command, in, out); break;
         case "HELP": help(); break;
         case "CLEAR": clearScreen(); break;
@@ -359,6 +360,71 @@ public class IoTDevice {
       }
     }
     return;
+  }
+
+  public static void sendImageCommand(String command, ObjectInputStream in, ObjectOutputStream out){
+    String[] splitCommand = command.split(" ");
+
+    if(splitCommand.length != 2){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: EI <filename.jpg>  - Send image to the server");
+    } else {
+      String imgFilename = new String(splitCommand[1]);
+
+      try{
+
+        File image = new File(imgFilename);
+        if(!image.exists()){
+          System.err.println("Error: file does not exist");
+          return;
+        }
+
+        out.writeObject(Command.EI);
+        Thread.sleep(200);
+        out.writeObject(imgFilename);
+        Thread.sleep(200);
+        Response r = (Response) in.readObject();
+        if(r.equals(Response.OK)){
+          // prepare to send file
+
+          long imgSize = image.length();
+          long bytesRemaining = imgSize;
+          out.writeObject(imgSize);
+          FileInputStream fin = new FileInputStream(image);
+          InputStream finput = new BufferedInputStream(fin);
+
+          byte[] buffer = new byte[1024];
+          int bytesRead;
+          while(bytesRemaining>0){
+            bytesRead=finput.read(buffer);
+            out.writeObject(bytesRead);
+            out.write(buffer, 0, bytesRead);
+            out.flush();
+            bytesRemaining -= bytesRead;
+          }
+
+          finput.close();
+          fin.close();
+
+          Response r2 = (Response) in.readObject();
+
+          if(!r2.equals(Response.OK)) throw new IOException();
+          else System.out.println("Sent "+imgSize+" bytes to server.");
+
+        } else {
+          throw new IOException();
+        }
+
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicate with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing
+      } catch (InterruptedException e) {
+        // do nothing
+      }
+
+      return;
+    }
   }
 
   /**

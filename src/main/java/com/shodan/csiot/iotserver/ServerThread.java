@@ -1,9 +1,6 @@
 package com.shodan.csiot.iotserver;
 import java.io.*;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.*;
 import java.net.Socket;
 import com.shodan.csiot.common.*;
 
@@ -207,6 +204,68 @@ public class ServerThread extends Thread {
       } catch(Exception e) {
         out.writeObject(Response.NOK);
         log.append(" :: NOK");
+      } finally {
+        logger.log(log.toString());
+        return;
+      }
+    }
+  }
+
+  private void sendImageCommand(){
+    StringBuilder log = new StringBuilder("EI");
+    synchronized (deviceFiles) {
+      try {
+        String imageFileName = (String) in.readObject();
+
+        log.append(" "+imageFileName);
+
+        String[] splitFilename = imageFileName.split("\\.");
+
+        String extension = new String(splitFilename[1]);
+
+        List<String> validExtensions = new ArrayList<String>(Arrays.asList("jpg","png","bmp","webp"));
+        if(validExtensions.contains(extension)){
+          out.writeObject(Response.OK);
+          log.append(" :: OK");
+          // prepare to receive file
+
+          Long imageSize = (Long) in.readObject();
+          long bytesRemaining = imageSize;
+
+          File image = new File(deviceFiles.get(currUDP.getDevice().getId()).getAbsolutePath()+"/img."+extension);
+          if(image.exists()) image.delete();
+          image.createNewFile();
+
+          FileOutputStream fout = new FileOutputStream(image);
+          OutputStream foutput  = new BufferedOutputStream(fout);
+
+          byte[] buffer = new byte[1024];
+          int bytesRead;
+          try{
+            while(bytesRemaining>0){
+              bytesRead = (Integer) in.readObject();
+              in.read(buffer, 0, bytesRead);
+              foutput.write(buffer, 0, bytesRead);
+              foutput.flush();
+              bytesRemaining -= bytesRead;
+            }
+          } catch(EOFException e) {
+            // do nothing
+          }
+
+          log.append(" "+imageSize+" bytes -> "+image.getName());
+
+          foutput.close();
+          fout.close();
+
+          out.writeObject(Response.OK);
+
+        } else {
+          throw new Exception();
+        }
+      } catch (Exception e) {
+        out.writeObject(Response.NOK);
+        log.append(" :: NOK" + e.getMessage());
       } finally {
         logger.log(log.toString());
         return;
@@ -541,6 +600,7 @@ public class ServerThread extends Thread {
           case ADD: this.addCommand(); break;
           case RD: this.registerDeviceCommand(); break;
           case ET: this.sendTemperatureCommand(); break;
+          case EI: this.sendImageCommand(); break;
           case RT: this.receiveTemperatureCommand(); break;
         }
       } catch(IOException e) {
