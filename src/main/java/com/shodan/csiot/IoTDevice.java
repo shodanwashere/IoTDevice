@@ -8,6 +8,9 @@ import sun.misc.SignalHandler;
 import com.shodan.csiot.common.*;
 import java.util.Scanner;
 
+/**
+ * 
+ */
 public class IoTDevice {
   public static Socket clientSocket;  
   public static Scanner input = new Scanner(System.in);
@@ -33,6 +36,12 @@ public class IoTDevice {
     System.out.println("- EXIT               - Terminate connection");
   }
 
+  /**
+   * Handles the authentication routine on the client-side
+   * @param in  Socket input stream
+   * @param out Socket output stream
+   * @return Was authentication successful?
+   */
   private static boolean authenticationRoutine(ObjectInputStream in, ObjectOutputStream out){
     // send user
     try {
@@ -104,7 +113,7 @@ public class IoTDevice {
    * Method that deals with the entire command line interface
    * 
    * @param in - Client socket input stream
-   * @param in - Client socket output stream
+   * @param out - Client socket output stream
    */
   public static void commandLineInterface(ObjectInputStream in, ObjectOutputStream out){
     // TODO: prepare to authenticate with server
@@ -123,6 +132,7 @@ public class IoTDevice {
         case "ADD": addCommand(command, in, out); break;
         case "RD": registerDeviceCommand(command, in, out); break;
         case "ET": sendTemperatureCommand(command, in, out); break;
+        case "RT": receiveTemperatureCommand(command, in, out); break;
         case "HELP": help(); break;
         case "CLEAR": clearScreen(); break;
         case "EXIT": exitCommand(in, out); return;
@@ -136,7 +146,7 @@ public class IoTDevice {
    * 
    * @param command - String that contains the CREATE keyword and the @code{dm} parameter
    * @param in - Client socket input stream
-   * @param in - Client socket output stream
+   * @param out - Client socket output stream
    */
   public static void createCommand(String command, ObjectInputStream in, ObjectOutputStream out){
     String[] splitCommand = command.split(" ");
@@ -165,6 +175,13 @@ public class IoTDevice {
     return;
   }
 
+  /**
+   * Implements the ADD command on the client side
+   *
+   * @param command String that contains the CREATE keyword and the @code{dm} parameter
+   * @param in Client socket input stream
+   * @param out Client socket output stream
+   */
   public static void addCommand(String command, ObjectInputStream in, ObjectOutputStream out) {
     String[] splitCommand = command.split(" ");
 
@@ -183,8 +200,8 @@ public class IoTDevice {
         Response r = (Response) in.readObject();
         switch(r){
           case OK : System.out.println("User "+user+" added to domain "+dm); break;
-          case NOPERM: System.err.println("Error: you do not have permissions for this operation."); break;
-          case NODM: System.err.println("Error: domain "+dm+" doesn't exist."); break;
+          case NOPERM: System.err.println("Error: permission denied"); break;
+          case NODM: System.err.println("Error: domain "+dm+" doesn't exist"); break;
           case NOK : System.err.println("Error: user could not be added to domain"); break;
         }
       } catch (IOException e) {
@@ -198,6 +215,13 @@ public class IoTDevice {
     return;
   }
 
+  /**
+   * Implements the RD command on the client side
+   *
+   * @param command String that contains the CREATE keyword and the @code{dm} parameter
+   * @param in Client socket input stream
+   * @param out Client socket output stream
+   */
   public static void registerDeviceCommand(String command, ObjectInputStream in, ObjectOutputStream out){
     String[] splitCommand = command.split(" ");
 
@@ -215,8 +239,8 @@ public class IoTDevice {
         Response r = (Response) in.readObject();
         switch(r) {
           case OK : System.out.println("Registered the device to domain "+dm); break;
-          case NOPERM: System.err.println("Error: you do not have permissions for this operation."); break;
-          case NODM: System.err.println("Error: domain "+dm+" doesn't exist."); break;
+          case NOPERM: System.err.println("Error: permission denied"); break;
+          case NODM: System.err.println("Error: domain "+dm+" doesn't exist"); break;
           case NOK : System.err.println("Error: device couldnt be registered"); break;
         }
       } catch (IOException e) {
@@ -230,6 +254,13 @@ public class IoTDevice {
     return;
   }
 
+  /**
+   * Implements the ET command on the client side
+   *
+   * @param command String that contains the CREATE keyword and the @code{dm} parameter
+   * @param in Client socket input stream
+   * @param out Client socket output stream
+   */
   public static void sendTemperatureCommand(String command, ObjectInputStream in, ObjectOutputStream out){
     String[] splitCommand = command.split(" ");
 
@@ -247,6 +278,76 @@ public class IoTDevice {
         Response r = (Response) in.readObject();
         switch(r) {
           case OK: System.out.println("Temperature saved on server"); break;
+          case NOK: System.err.println("Error: server failed to save temperature"); break;
+        }
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicate with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing
+      } catch (InterruptedException e) {
+        // do nothing
+      }
+    }
+    return;
+  }
+
+  /**
+   * Implements the RT command on the client side
+   *
+   * @param command String that contains the CREATE keyword and the @code{dm} parameter
+   * @param in Client socket input stream
+   * @param out Client socket output stream
+   */
+  public static void receiveTemperatureCommand(String command, ObjectInputStream in, ObjectOutputStream out){
+    String[] splitCommand = command.split(" ");
+
+    if (splitCommand.length != 2){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: RT <dm> - Receive latest temperature data from devices in the 'dm' domain if you have permissions");
+    } else {
+      String dm = new String(splitCommand[1]);
+
+      try {
+        out.writeObject(Command.RT);
+        Thread.sleep(500);
+        out.writeObject(dm);
+        Thread.sleep(200);
+        Response r = (Response) in.readObject();
+
+        switch(r) {
+          case OK: {
+            // got OK from the server. prepare to receive file
+            File tempRec = new File("tempRec-"+dm+"-"+System.currentTimeMillis()+".txt");
+            tempRec.createNewFile();
+
+            Long tempRecLength = (Long) in.readObject();
+            long bytesRemaining = tempRecLength;
+
+            FileOutputStream fout = new FileOutputStream(tempRec);
+            OutputStream foutput  = new BufferedOutputStream(fout);
+
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            try{
+              while(bytesRemaining>0){
+                bytesRead = (Integer) in.readObject();
+                in.read(buffer, 0, bytesRead);
+                foutput.write(buffer, 0, bytesRead);
+                foutput.flush();
+                bytesRemaining -= bytesRead;
+              }
+            } catch(EOFException e) {
+              // woah wtf???
+            }
+
+            System.out.println("Received "+tempRecLength+" bytes. Saved to "+tempRec.getName());
+
+            foutput.close();
+            fout.close();
+            break;
+          }
+          case NODM: System.err.println("Error: domain "+dm+" does not exist"); break;
+          case NOPERM: System.err.println("Error: permission denied");
           case NOK: System.err.println("Error: server failed to save temperature"); break;
         }
       } catch (IOException e) {

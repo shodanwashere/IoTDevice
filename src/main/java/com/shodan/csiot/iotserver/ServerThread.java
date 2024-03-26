@@ -1,18 +1,11 @@
 package com.shodan.csiot.iotserver;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.File;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import java.io.*;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
-import java.io.IOException;
 import java.net.Socket;
 import com.shodan.csiot.common.*;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 
 public class ServerThread extends Thread {
   private Logger logger;
@@ -189,6 +182,7 @@ public class ServerThread extends Thread {
     synchronized (deviceFiles) {
       try{
         String temp = (String) in.readObject();
+        log.append(" "+temp);
         Float aTemp = Float.parseFloat(temp);
 
         // open a file
@@ -216,6 +210,105 @@ public class ServerThread extends Thread {
       } finally {
         logger.log(log.toString());
         return;
+      }
+    }
+  }
+
+  private void receiveTemperatureCommand(){
+    StringBuilder log = new StringBuilder("RT");
+    synchronized (domains) {
+      synchronized (deviceFiles) {
+        synchronized (passwd) {
+          try {
+            // first, check if the domain exists
+            String dm = (String) in.readObject();
+            log.append(" " + dm);
+            if (!domains.containsKey(dm)) {
+              out.writeObject(Response.NODM);
+              log.append(" :: NODM");
+            } else {
+              // check if the user has permissions to read from this domain
+              Domain d = domains.get(dm);
+              if (!d.getMembers().contains(currUDP.getUser())) {
+                out.writeObject(Response.NOPERM);
+                log.append(" :: NOPERM");
+              } else {
+                // the big check
+                // create a new temporary file
+                File tempSend = File.createTempFile("tempSend-",".tmp");
+                FileWriter tsFW = new FileWriter(tempSend);
+                BufferedWriter tsBW = new BufferedWriter(tsFW);
+
+                // from the domain, get all the registered devices
+                List<Device> domainRegisteredDevices = d.getRegisteredDevices();
+                // for each device
+                for (Device rd : domainRegisteredDevices) {
+                  // find the owner
+                  User ru = null;
+                  for (User user : d.getMembers()){
+                    ru = user;
+                    if(ru.getOwnedDevices().contains(rd)) break;
+                  }
+
+                  File rdFile = new File(deviceFiles.get(rd.getId()).getAbsolutePath()+"/temp");
+
+                  FileReader deviceFileReader = new FileReader(rdFile);
+                  BufferedReader deviceFileBufferedReader = new BufferedReader(deviceFileReader);
+
+                  String temp = new String(deviceFileBufferedReader.readLine());
+
+                  deviceFileReader.close();
+                  deviceFileBufferedReader.close();
+
+                  String deviceIdentification = new String(ru.getUsername() + "-" + rd.getId());
+                  StringBuilder tempFileLine = new StringBuilder(deviceIdentification);
+                  tempFileLine.append(" :: ");
+                  tempFileLine.append(temp);
+
+                  tsBW.write(tempFileLine.toString()); tsBW.newLine();
+                  tsBW.flush();
+                }
+
+                tsBW.close();
+                tsFW.close();
+
+                // now things get intense... let's inform the client that we got the data they want
+                out.writeObject(Response.OK);
+                log.append(" :: OK");
+                // next, the number of bytes we need to send
+                long tempSendLength = tempSend.length();
+                long bytesRemaining = tempSendLength;
+                out.writeObject(tempSendLength);
+                log.append(" "+tempSendLength+" bytes");
+                FileInputStream fin = new FileInputStream(tempSend);
+                InputStream finput = new BufferedInputStream(fin);
+
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while(bytesRemaining>0){
+                  bytesRead=finput.read(buffer);
+                  out.writeObject(bytesRead);
+                  out.write(buffer, 0, bytesRead);
+                  out.flush();
+                  bytesRemaining -= bytesRead;
+                }
+
+                finput.close();
+                fin.close();
+
+                tempSend.delete();
+                // done
+              }
+            }
+
+          } catch (Exception e) {
+            out.writeObject(Response.NOK);
+            log.append(" :: NOK - "+e.getMessage());
+          } finally {
+            logger.log(log.toString());
+            return;
+          }
+        }
       }
     }
   }
@@ -448,6 +541,7 @@ public class ServerThread extends Thread {
           case ADD: this.addCommand(); break;
           case RD: this.registerDeviceCommand(); break;
           case ET: this.sendTemperatureCommand(); break;
+          case RT: this.receiveTemperatureCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();
