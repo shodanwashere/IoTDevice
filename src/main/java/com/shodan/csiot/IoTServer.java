@@ -17,6 +17,16 @@ import sun.misc.SignalHandler;
 
 public class IoTServer {
   public static void main(String[] args) {
+    long startupStart = System.currentTimeMillis();
+    StringBuilder logo = new StringBuilder();
+    logo.append(".-.    .-----. .--.\n");
+    logo.append(": :    `-. .-': .--'\n");
+    logo.append(": : .--. : :  `. `.  .--. .--. .-..-. .--. .--.\n");
+    logo.append(": :' .; :: :   _`, :' '_.': ..': `; :' '_.': ..'\n");
+    logo.append(":_;`.__.':_;  `.__.'`.__.':_;  `.__.'`.__.':_;\n");
+    System.out.print(logo.toString());
+    System.out.println("More info at: https://github.com/shodanwashere/IoTDevice");
+
     Logger lg = new Logger("main-server");
     // handle args
     int port = 12345;
@@ -49,7 +59,6 @@ public class IoTServer {
       List<ServerThread> threads = new ArrayList<>();
 
       ServerSocket srvSocket = new ServerSocket(port);
-      lg.log("Listening on port "+port);
 
       // this shutdown hook will mark all threads for shutdown, so they will shutdown safely.
       Signal.handle(new Signal("INT"), new SignalHandler() {
@@ -74,6 +83,10 @@ public class IoTServer {
         }
       });
 
+      long startupEnd = System.currentTimeMillis();
+      long elapsed = startupEnd - startupStart;
+      System.out.println("Startup time: "+elapsed+"ms");
+      lg.log("Listening on port "+port);
       while(true)
       {
         Socket cliSocket = srvSocket.accept();
