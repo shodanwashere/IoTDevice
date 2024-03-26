@@ -37,6 +37,8 @@ public class IoTDevice {
    * @param in - Client socket output stream
    */
   public static void commandLineInterface(ObjectInputStream in, ObjectOutputStream out){
+    // TODO: prepare to authenticate with server
+    // TODO: Failover if authentication fails
     help();
     while(true){
       System.out.printf("> ");
@@ -97,7 +99,6 @@ public class IoTDevice {
       String dm = new String(splitCommand[2]);
 
       try { 
-
         out.writeObject(Command.ADD);
         Thread.sleep(200);
         out.writeObject(user);

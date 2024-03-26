@@ -207,6 +207,8 @@ public class ServerThread extends Thread {
       return;
     }
 
+    // TODO: add authentication routine and stop the thread if it fails
+
     while(!shutdownInitiated) {
       try {
         logger.log("Listening for client commands"); 
