@@ -1,24 +1,27 @@
 package com.shodan.csiot.common;
 
+import com.shodan.csiot.iotserver.Device;
+import com.shodan.csiot.iotserver.User;
+
 public class UserDevicePair {
 
-    private String userID;
-    private String deviceID;
+    private User user;
+    private Device device;
 
-    public UserDevicePair(String userID, String deviceID){
-        this.userID = userID;
-        this.deviceID = deviceID;
+    public UserDevicePair(User user, Device device){
+        this.user = user;
+        this.device = device;
     }
 
-    public String getUserID() {
-        return userID;
+    public User getUser() {
+        return user;
     }
 
-    public String getDeviceID() {
-        return deviceID;
+    public Device getDevice() {
+        return device;
     }
 
     public boolean equals(UserDevicePair udp){
-        return this.userID.equals(udp.getUserID()) && this.deviceID.equals(udp.getDeviceID());
+        return this.user.equals(udp.getUser()) && this.device.equals(udp.getDevice());
     }
 }

@@ -2,19 +2,17 @@ package com.shodan.csiot.iotserver;
 
 public class Device {
 
-    private String domain;
+
     private String id;
     private Float temperature;
     private String picturePath;
 
-    public Device(String id, String domain){
+    public Device(String id){
         this.id = id;
-        this.domain = domain;
+        temperature = null;
+        picturePath = null;
     }
 
-    public String getDomain() {
-        return domain;
-    }
 
     public String getId() {
         return id;
@@ -34,5 +32,9 @@ public class Device {
 
     public void setPicturePath(String picturePath) {
         this.picturePath = picturePath;
+    }
+
+    public boolean equals(Device device){
+        return this.id.equals(device.getId()) && this.temperature.equals(device.getTemperature()) && this.picturePath.equals(device.getPicturePath());
     }
 }

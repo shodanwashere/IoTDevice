@@ -9,6 +9,8 @@ import java.io.BufferedReader;
 import java.io.FileWriter;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import java.net.Socket;
@@ -54,13 +56,44 @@ public class IoTServer {
       System.exit(1);
     }
 
+
+
     try{
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
       List<ServerThread> threads = new ArrayList<>();
       List<UserDevicePair> currentlyLoggedInUDPs = new ArrayList<>();
       // set up currently registered devices
-      List<Device> devices = new ArrayList<>();
+      Map<String, User> users = new HashMap<>();
+      Map<String, Device> devices = new HashMap<>();
+      Map<String, Domain> domains = new HashMap<>();
+
+      FileReader pfr = new FileReader(passwdFile);
+      BufferedReader pbr = new BufferedReader(pfr);
+
+      String pLine;
+      while((pLine = pbr.readLine()) != null){
+        String[] passwdEntry = pLine.split(":", Integer.MAX_VALUE);
+        String username = new String(passwdEntry[0]);
+        String password = new String(passwdEntry[1]);
+        String deviceLine = new String(passwdEntry[2]);
+
+        User user = new User(username, password);
+        if(!deviceLine.equals("")){
+          String[] splitDL = deviceLine.split(",");
+          for(String devID: splitDL){
+            String aDevID = new String(devID);
+            Device newDevice = new Device(new String(aDevID));
+            devices.put(aDevID, newDevice);
+            user.addDevice(newDevice);
+          }
+        }
+
+        users.put(username, user);
+      }
+
+      pbr.close();
+      pfr.close();
 
       FileReader dfr = new FileReader(domainsFile);
       BufferedReader dbr = new BufferedReader(dfr);
@@ -68,24 +101,36 @@ public class IoTServer {
       String dLine;
       while((dLine = dbr.readLine()) != null){
         String[] domainEntry = dLine.split(":",Integer.MAX_VALUE);
-        String devicesInDomain = new String(domainEntry[2]);
-        if(!devicesInDomain.equals("")){
-          String domainName = new String(domainEntry[0]);
-          String[] deviceArray = devicesInDomain.split(",");
-          for(String d: deviceArray){
-            devices.add(new Device(d, domainName));
+        String domainName = new String(domainEntry[0]);
+        String domainMemberUsernames = new String(domainEntry[1]);
+        String domainDeviceIDs = new String(domainEntry[2]);
+
+        Domain newDomain = new Domain(domainName);
+        if(!domainMemberUsernames.equals("")){
+          String[] memberUsernames = domainMemberUsernames.split(",");
+          for(String mu: memberUsernames){
+            if(users.containsKey(mu)){
+              newDomain.addMember(users.get(mu));
+            }
           }
         }
+
+        if(!domainDeviceIDs.equals("")){
+          String[] deviceIDs = domainDeviceIDs.split(",");
+          for(String d: deviceIDs){
+            if(devices.containsKey(d)){
+              newDomain.addDevice(devices.get(d));
+            }
+          }
+        }
+
+        domains.put(domainName, newDomain);
       }
 
       dbr.close();
       dfr.close();
 
-      System.out.println("Currently active devices: "); if(devices.isEmpty()) System.out.println("No devices.");
-      for(Device d: devices){
-        System.out.printf("-\tID: %s\n\tDomain: %s\n", d.getId(), d.getDomain());
-      }
-
+      // open server socket
       ServerSocket srvSocket = new ServerSocket(port);
 
       // this shutdown hook will mark all threads for shutdown, so they will shutdown safely.
@@ -120,7 +165,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, devices, cliSocket);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, cliSocket);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {

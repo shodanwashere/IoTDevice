@@ -20,10 +20,13 @@ public class ServerThread extends Thread {
   private UserDevicePair currUDP;
 
   private File passwd;
-  private File domains;
+  private File domainsFile;
 
   private List<UserDevicePair> currentlyLoggedInUDPs;
-  private List<Device> devices;
+  private Map<String, User> users;
+  private Map<String, Device> devices;
+  private Map<String, Domain> domains;
+
 
   private ObjectInputStream in;
   private ObjectOutputStream out;
@@ -41,74 +44,16 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domains, List<UserDevicePair> currentlyLoggedInUDPs, List<Device> devices, Socket cliSocket) throws Exception {
+  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Socket cliSocket) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
-    this.devices = devices;
     this.passwd = passwd;
-    this.domains = domains;
+    this.domainsFile = domainsFile;
     this.currentlyLoggedInUDPs = currentlyLoggedInUDPs;
 
-    // open the passwd file and copy contents to RAM
-    synchronized(passwd){
-      FileReader pfr = new FileReader(passwd);
-      BufferedReader pbfr = new BufferedReader(pfr);
-
-      String line;
-      while((line = pbfr.readLine()) != null){
-        String[] tuple = line.split(":", Integer.MAX_VALUE);
-          String user = new String(tuple[0]);
-          String pass = new String(tuple[1]);
-	      usersAndPasswords.put(user, pass); // add passwd file entries to hashmap
-          String deviceIDs = new String(tuple[2]);
-          List<String> deviceList = new ArrayList<>();
-
-          if(!devices.equals("")){
-            for(String d: deviceIDs.split(",")){
-              deviceList.add(d);
-            }
-          }
-
-          userDeviceList.put(user, deviceList);
-      }
-
-      pbfr.close();
-      pfr.close();
-    }
-
-    // open the domains file and copy its contents to RAM
-    synchronized(domains){
-      FileReader dfr = new FileReader(domains);
-      BufferedReader dbfr = new BufferedReader(dfr);
-
-      String line;
-      while((line = dbfr.readLine()) != null) {
-        String[] tuple = line.split(":", Integer.MAX_VALUE);
-	      String domain = new String(tuple[0]);
-	      String users = new String(tuple[1]);
-	      String deviceIDs = new String(tuple[2]);
-	      List<String> userList = new ArrayList<>();
-	      List<String> deviceList = new ArrayList<>();
-
-	      if(!users.equals("")){
-	        for(String u: users.split(",")){
-	          userList.add(u);
-	        }
-	      }
-
-	      if(!devices.equals("")){
-	        for(String d: deviceIDs.split(",")){
-	          deviceList.add(d);
-	        }
-	      }
-
-	      domainUserPermissions.put(domain, userList);
-	      domainDeviceList.put(domain, deviceList);
-      }
-
-      dbfr.close();
-      dfr.close();
-    }
+    this.users = users;
+    this.devices = devices;
+    this.domains = domains;
   }
 
   private void createCommand(){
@@ -117,21 +62,19 @@ public class ServerThread extends Thread {
       try {
         String dm = (String) in.readObject();
         log.append(" "+dm);
-        if(domainUserPermissions.containsKey(dm) || domainDeviceList.containsKey(dm)){
-          out.writeObject(Response.NOK);
-          log.append(" :: NOK");
+
+        // does the domain already exist?
+        if(domains.containsKey(dm)){
+          throw new Exception("Domain already exists.");
         } else {
-          List<String> users = new ArrayList<>();
-          users.add(currUDP.getUserID());
-      
-          List<String> devices = new ArrayList<>();
-      
-          domainUserPermissions.put(dm, users);
-          domainDeviceList.put(dm, devices);
+          String domainName = new String(dm);
+          Domain newDomain = new Domain(domainName);
+          newDomain.addMember(currUDP.getUser());
+          domains.put(domainName, newDomain);
 
           this.updateDomains();
 
-	        out.writeObject(Response.OK);
+          out.writeObject(Response.OK);
           log.append(" :: OK");
         }
       } catch (IOException e) {
@@ -150,35 +93,81 @@ public class ServerThread extends Thread {
       try {
         String user1 = (String) in.readObject();
         log.append(" "+user1);
+
         String dm = (String) in.readObject();
         log.append(" "+dm);
 
-        if(!(domainUserPermissions.containsKey(dm) && domainDeviceList.containsKey(dm))){
+        // does this domain exist?
+        if(!domains.containsKey(dm)){
           out.writeObject(Response.NODM);
           log.append(" :: NODM");
           logger.log(log.toString());
           return;
-        }
-
-        if(!domainUserPermissions.get(dm).contains(currUDP.getUserID())){
-          out.writeObject(Response.NOPERM);
-          log.append(" :: NOPERM");
-          logger.log(log.toString());
-          return;
-        }
-
-        synchronized(passwd){
-          if(!usersAndPasswords.containsKey(user1)){
-            throw new Exception("user does not exist");
+        } else {
+          // does the current user have membership on this domain?
+          Domain d = domains.get(dm);
+          if(!d.getMembers().contains(currUDP.getUser())) {
+            out.writeObject(Response.NOPERM);
+            log.append(" :: NOPERM");
+            logger.log(log.toString());
+            return;
+          } else {
+            // does the referenced user exist?
+            synchronized(passwd) {
+              if (!users.containsKey(user1)) {
+                throw new Exception("User does not exist.");
+              } else {
+                // all checks passed. add user to domain
+                User toAdd = users.get(user1);
+                d.addMember(toAdd);
+              }
+            }
           }
         }
 
-        List<String> dmUserPermissions = domainUserPermissions.get(dm);
-        if(!dmUserPermissions.contains(user1)){
-          dmUserPermissions.add(user1);
+        // now that RAM is updated, write changes to file
+        this.updateDomains();
+
+        out.writeObject(Response.OK);
+        log.append(" :: OK");
+      } catch (Exception e) {
+        out.writeObject(Response.NOK);
+        log.append(" :: NOK");
+      } finally {
+        logger.log(log.toString());
+        return;
+      }
+    }
+  }
+
+  private void registerDeviceCommand(){
+    StringBuilder log = new StringBuilder("RD");
+    synchronized (domains) {
+      try {
+        // first, check if the domain exists
+        String dm = (String) in.readObject();
+        log.append(" "+dm);
+
+        if(!domains.containsKey(dm)){
+          out.writeObject(Response.NODM);
+          log.append(" :: NODM");
+          logger.log(log.toString());
+          return;
+        } else {
+          // does the user have permissions?
+          Domain d = domains.get(dm);
+          if(!d.getMembers().contains(currUDP.getUser())){
+            out.writeObject(Response.NOPERM);
+            log.append(" :: NOPERM");
+            logger.log(log.toString());
+            return;
+          } else {
+            // register the current device in the domain!
+            Device dv = currUDP.getDevice();
+            d.addDevice(dv);
+          }
         }
 
-        // now that RAM is updated, write changes to file
         this.updateDomains();
 
         out.writeObject(Response.OK);
@@ -200,12 +189,18 @@ public class ServerThread extends Thread {
     FileWriter passwdFileWriter = new FileWriter(passwd);
     BufferedWriter passwdFileBufferedWriter = new BufferedWriter(passwdFileWriter);
 
-    for(String user: usersAndPasswords.keySet()){
-      StringBuilder passwdEntry = new StringBuilder(user+":");
-      String userPassword = usersAndPasswords.get(user);
-      passwdEntry.append(userPassword+":");
-      List<String> deviceList = userDeviceList.get(user);
-      passwdEntry.append(String.join(",",deviceList));
+    for(String username: users.keySet()){
+      User u = users.get(username);
+      StringBuilder passwdEntry = new StringBuilder(u.getUsername()+":");
+
+      passwdEntry.append(u.getPassword()+":");
+
+      List<Device> ownedDevices = u.getOwnedDevices();
+      List<String> deviceIDs = new ArrayList<>();
+      for(Device d: ownedDevices){
+        deviceIDs.add(d.getId());
+      }
+      passwdEntry.append(String.join(",",deviceIDs));
 
       passwdFileBufferedWriter.write(passwdEntry.toString());
       passwdFileBufferedWriter.newLine();
@@ -218,16 +213,27 @@ public class ServerThread extends Thread {
   // do not call this method without first performing synchronize(domains)
   private void updateDomains() throws Exception{
     // now that RAM is updated, write changes to file
-    domains.delete(); domains.createNewFile(); // dirty hack! anyhoo
-    FileWriter domainsFileWriter = new FileWriter(domains);
+    domainsFile.delete(); domainsFile.createNewFile(); // dirty hack! anyhoo
+    FileWriter domainsFileWriter = new FileWriter(domainsFile);
     BufferedWriter domainsFileBufferedWriter = new BufferedWriter(domainsFileWriter);
 
-    for(String domain: domainUserPermissions.keySet()){
-      StringBuilder domainEntry = new StringBuilder(domain+":");
-      List<String> userPermissions = domainUserPermissions.get(domain);
-      domainEntry.append(String.join(",",userPermissions)+":");
-      List<String> deviceList = domainDeviceList.get(domain);
-      domainEntry.append(String.join(",",deviceList));
+    for(String domainName: domains.keySet()){
+      Domain d = domains.get(domainName);
+      StringBuilder domainEntry = new StringBuilder(d.getName()+":");
+
+      List<User> members = d.getMembers();
+      List<String> memberUsernames = new ArrayList<>();
+      for(User m : members){
+        memberUsernames.add(m.getUsername());
+      }
+      domainEntry.append(String.join(",",memberUsernames)+":");
+
+      List<Device> devices = d.getRegisteredDevices();
+      List<String> deviceIDs = new ArrayList<>();
+      for(Device dev: devices){
+        deviceIDs.add(dev.getId());
+      }
+      domainEntry.append(String.join(",",deviceIDs));
 
       domainsFileBufferedWriter.write(domainEntry.toString());
       domainsFileBufferedWriter.newLine();
@@ -243,10 +249,10 @@ public class ServerThread extends Thread {
 
     // initial standard auth
     synchronized (passwd) {
-      if(usersAndPasswords.containsKey(cliUser)){
+      if(users.containsKey(cliUser)){
         logger.log("AUTH :: User is already registered. Authenticating...");
-        String srvPass = usersAndPasswords.get(cliUser);
-        if(srvPass.equals(cliPass)){
+        User user = users.get(cliUser);
+        if(user.getPassword().equals(cliPass)){
           logger.log("AUTH :: Password match.");
           out.writeObject(Response.OKUSER);
         } else {
@@ -256,8 +262,8 @@ public class ServerThread extends Thread {
         }
       } else {
         logger.log("AUTH :: User does not exist yet. Registering...");
-        usersAndPasswords.put(cliUser, cliPass);
-        userDeviceList.put(cliUser, new ArrayList<String>());
+        User newUser = new User(cliUser, cliPass);
+        users.put(cliUser, newUser);
         updatePasswd();
         logger.log("AUTH :: New user registered");
         out.writeObject(Response.OKNEWUSER);
@@ -270,39 +276,50 @@ public class ServerThread extends Thread {
 
     // secondary auth - device id
     synchronized (passwd) {
-      Boolean deviceAlreadyRegistered = false;
-      for(String u: userDeviceList.keySet()){
-        List<String> uDeviceList = userDeviceList.get(u);
-        if(!u.equals(cliUser) && uDeviceList.contains(devID)){
-          deviceAlreadyRegistered = true;
-          break;
-        }
-      }
+      User thisUser = users.get(cliUser);
+      if(devices.containsKey(devID)){
+        Device cliDevice = devices.get(devID);
 
-      if(deviceAlreadyRegistered) {
-        logger.logErr("AUTH :: Device has already been registed by another user. Authentication failed.");
-        out.writeObject(Response.NOKDEVID);
-        return false;
-      } else {
-        Boolean deviceAlreadyAuthenticated = false;
-        for(UserDevicePair loggedInUDP:  currentlyLoggedInUDPs){
-          deviceAlreadyAuthenticated = loggedInUDP.getUserID().equals(cliUser) && loggedInUDP.getDeviceID().equals(devID);
-          break;
+        //check if device is already registered
+        Boolean deviceAlreadyRegistered = false;
+        for(String u: users.keySet()){
+          User user = users.get(u);
+          if(!user.equals(thisUser) && user.getOwnedDevices().contains(cliDevice)){
+            deviceAlreadyRegistered = true;
+            break;
+          }
         }
-        if(deviceAlreadyAuthenticated) {
-          logger.logErr("AUTH :: User has already logged in with this device in another client. Authentication failed.");
+        if(deviceAlreadyRegistered) {
+          logger.logErr("AUTH :: Device has already been registed by another user. Authentication failed.");
           out.writeObject(Response.NOKDEVID);
           return false;
         } else {
-          List<String> cliUserDeviceList = userDeviceList.get(cliUser);
-          if (!cliUserDeviceList.contains(devID)) {
-            cliUserDeviceList.add(new String(devID));
-            updatePasswd();
+          // check if this user is already logged in
+          Boolean deviceAlreadyAuthenticated = false;
+
+          for(UserDevicePair loggedInUDP:  currentlyLoggedInUDPs){
+            deviceAlreadyAuthenticated = loggedInUDP.getUser().equals(thisUser) && loggedInUDP.getDevice().equals(cliDevice);
+            break;
+          }
+
+          if(deviceAlreadyAuthenticated) {
+            logger.logErr("AUTH :: User has already logged in with this device in another client. Authentication failed.");
+            out.writeObject(Response.NOKDEVID);
+            return false;
+          } else {
+            thisUser.addDevice(cliDevice);
           }
           logger.log(" AUTH :: Device check passed.");
           out.writeObject(Response.OKDEVID);
         }
+      } else {
+        Device newDevice = new Device(devID);
+        devices.put(devID, newDevice);
+        thisUser.addDevice(newDevice);
+        logger.log("AUTH :: New device registered.");
+        out.writeObject(Response.OKDEVID);
       }
+      updatePasswd();
     }
 
     logger.log("AUTH :: [2/3 locks removed]");
@@ -329,12 +346,12 @@ public class ServerThread extends Thread {
 
 
     // if you reached this point, congrats, you're authenticated! time to create a user-device-pair and add you to the list
-    currUDP = new UserDevicePair(new String(cliUser), new String(devID));
+    currUDP = new UserDevicePair(users.get(cliUser), devices.get(devID));
     synchronized (currentlyLoggedInUDPs) {
       currentlyLoggedInUDPs.add(currUDP);
     }
-    logger.log("AUTH :: "+currUDP.getUserID()+"-"+currUDP.getDeviceID()+" has logged in successfully.");
-    logger.setThreadName(currUDP.getUserID()+"-"+currUDP.getDeviceID());
+    logger.log("AUTH :: "+currUDP.getUser().getUsername()+"-"+currUDP.getDevice().getId()+" has logged in successfully.");
+    logger.setThreadName(currUDP.getUser().getUsername()+"-"+currUDP.getDevice().getId());
 
     return true;
   }
@@ -378,6 +395,7 @@ public class ServerThread extends Thread {
           case CREATE: this.createCommand(); break;
           case EOF: this.stopExecution(); break;
           case ADD: this.addCommand(); break;
+          case RD: this.registerDeviceCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();
