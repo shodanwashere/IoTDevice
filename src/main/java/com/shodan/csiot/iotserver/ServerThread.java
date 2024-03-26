@@ -215,6 +215,7 @@ public class ServerThread extends Thread {
         switch(clientCommand){
 	        case CREATE: this.createCommand(); break;
           case EOF: this.stopExecution(); break;
+          case ADD: this.addCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();

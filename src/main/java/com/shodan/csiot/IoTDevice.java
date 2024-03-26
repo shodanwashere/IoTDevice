@@ -44,6 +44,7 @@ public class IoTDevice {
       String keyword = new String(command.split(" ")[0]);
       switch(keyword){
         case "CREATE": createCommand(command, in, out); break;
+        case "ADD": addCommand(command, in, out); break;
         case "HELP": help(); break;
         case "EXIT": exitCommand(in, out); return;
         default: System.out.println("Not implemented yet"); break;
@@ -80,6 +81,39 @@ public class IoTDevice {
         System.err.println("Error: failed to communicate with server");
       } catch (ClassNotFoundException e) {
         // do nothing, because this class cant "not be found"
+      }
+    }
+    return;
+  }
+
+  public static void addCommand(String command, ObjectInputStream in, ObjectOutputStream out) {
+    String[] splitCommand = command.split(" ");
+
+    if(splitCommand.length != 3){
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: ADD <user> <dm> - Create a new domain named 'dm' under your ownership");
+    } else {
+      String user = new String(splitCommand[1]);
+      String dm = new String(splitCommand[2]);
+
+      try { 
+
+        out.writeObject(Command.ADD);
+        Thread.sleep(200);
+        out.writeObject(user);
+        out.writeObject(dm);
+        Response r = (Response) in.readObject();
+        switch(r){
+          case OK : System.out.println("User "+user+" added to domain "+dm); break;
+          case NODM: System.err.println("Error: domain "+dm+" doesn't exist."); break;
+          case NOK : System.err.println("Error: user could not be added to domain"); break;
+        }
+      } catch (IOException e) {
+        System.err.println("Error: failed to communicate with server");
+      } catch (ClassNotFoundException e) {
+        // do nothing, because this class cant "not be found"
+      } catch (InterruptedException e) {
+        // do nothing
       }
     }
     return;
