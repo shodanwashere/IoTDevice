@@ -11,6 +11,10 @@ public class Logger {
     this.threadName = threadName;
   }
 
+  public void setThreadName(String threadName){
+    this.threadName = threadName;
+  }
+
   public void log(String m) {
     Date now = new Date();
     String timestamp = new SimpleDateFormat("HH:mm:ss", Locale.ENGLISH).format(now);
