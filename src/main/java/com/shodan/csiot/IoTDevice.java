@@ -1,5 +1,8 @@
 package com.shodan.csiot;
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.net.Socket;
@@ -92,7 +95,24 @@ public class IoTDevice {
       out.writeObject(executableName);
       out.flush();
       File exe = new File(executablePath);
-      out.writeObject(exe.length());
+
+      long nonce = (long) in.readObject();
+
+      // https://stackoverflow.com/questions/4485128/how-do-i-convert-long-to-byte-and-back-in-java
+      ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+      buffer.putLong(nonce);
+      byte[] nonceBytes = buffer.array();
+
+      byte[] exeBytes = Files.readAllBytes(exe.toPath());
+      byte[] concat = new byte[nonceBytes.length + exeBytes.length];
+      System.arraycopy(nonceBytes, 0, concat, 0, nonceBytes.length);
+      System.arraycopy(exeBytes, 0, concat, nonceBytes.length, exeBytes.length);
+
+      // get concat SHA256 hash
+      MessageDigest md = MessageDigest.getInstance("SHA256");
+      byte[] hash = md.digest(concat);
+
+      out.writeObject(hash);
       out.flush();
 
       Response r3 = (Response) in.readObject();
