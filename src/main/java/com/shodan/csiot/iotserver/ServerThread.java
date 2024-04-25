@@ -2,10 +2,15 @@ package com.shodan.csiot.iotserver;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.security.AlgorithmParameters;
 import java.security.MessageDigest;
 import java.util.*;
 import java.net.Socket;
 import com.shodan.csiot.common.*;
+
+import javax.crypto.Cipher;
+import javax.crypto.CipherOutputStream;
+import javax.crypto.SecretKey;
 
 public class ServerThread extends Thread {
   private Logger logger;
@@ -21,6 +26,9 @@ public class ServerThread extends Thread {
   private Map<String, Domain> domains;
   private Map<String, File> deviceFiles;
 
+  private Cipher cipher;
+  private SecretKey secretKey;
+  private AlgorithmParameters encParameters;
 
   private ObjectInputStream in;
   private ObjectOutputStream out;
@@ -33,7 +41,7 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket) throws Exception {
+  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket, Cipher cipher, SecretKey secretKey, AlgorithmParameters encParameters) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
     this.passwd = passwd;
@@ -44,6 +52,9 @@ public class ServerThread extends Thread {
     this.users = users;
     this.devices = devices;
     this.domains = domains;
+    this.cipher = cipher;
+    this.secretKey = secretKey;
+    this.encParameters = encParameters;
   }
 
   private void createCommand(){
@@ -471,8 +482,10 @@ public class ServerThread extends Thread {
   private void updatePasswd() throws Exception{
     // now that RAM is updated, write changes to file
     passwd.delete(); passwd.createNewFile(); // dirty hack! anyhoo
-    FileWriter passwdFileWriter = new FileWriter(passwd);
-    BufferedWriter passwdFileBufferedWriter = new BufferedWriter(passwdFileWriter);
+    File tmpPasswdFile = File.createTempFile("passwd-",".dec");
+    cipher.init(Cipher.ENCRYPT_MODE, secretKey, encParameters);
+    FileWriter tpfw = new FileWriter(tmpPasswdFile);
+    BufferedWriter passwdFileBufferedWriter = new BufferedWriter(tpfw);
 
     for(String username: users.keySet()){
       User u = users.get(username);
@@ -492,7 +505,21 @@ public class ServerThread extends Thread {
     }
 
     passwdFileBufferedWriter.close();
-    passwdFileWriter.close();
+
+    FileInputStream tpfis = new FileInputStream(tmpPasswdFile);
+    FileOutputStream pfos = new FileOutputStream(passwd);
+    CipherOutputStream pcos = new CipherOutputStream(pfos, cipher);
+
+    byte[] buffer = new byte[16];
+    int bytesRead;
+    while((bytesRead = tpfis.read(buffer)) != -1) {
+      pcos.write(buffer, 0, bytesRead);
+    }
+
+    pcos.close();
+    pfos.close();
+    tpfis.close();
+    tmpPasswdFile.delete();
   }
 
   // do not call this method without first performing synchronize(domains)
