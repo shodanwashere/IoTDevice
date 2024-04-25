@@ -4,7 +4,12 @@ import com.shodan.csiot.iotserver.*;
 import com.shodan.csiot.common.UserDevicePair;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.AlgorithmParameters;
+import java.security.InvalidKeyException;
 import java.security.KeyStore;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.KeySpec;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
@@ -14,11 +19,21 @@ import java.net.ServerSocket;
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 
+import javax.crypto.*;
+import javax.crypto.spec.PBEKeySpec;
 import javax.net.ServerSocketFactory;
 import javax.net.ssl.SSLServerSocket;
 import javax.net.ssl.SSLServerSocketFactory;
 
 public class IoTServer {
+
+  private static final int KEY_ITERATIONS = 10000;
+  private static final byte[] KEY_SALT = {
+          (byte) 0x1a, (byte) 0x5c, (byte) 0x9a, (byte) 0x12, (byte) 0x74, (byte) 0xfa, (byte) 0x18, (byte) 0x29
+  };
+  private static final int KEY_LENGTH = 128;
+  private static final String KEY_ALGORITHM = "PBEWithHmacSHA256AndAES_128";
+
   public static void main(String[] args) {
     long startupStart = System.currentTimeMillis();
     boolean debug = false;
@@ -40,7 +55,8 @@ public class IoTServer {
     int port = 12345;
     String keyStoreFilename = null;
     String keyStorePassword = null;
-    if(args.length >= 3){
+    String passwdFileEncryptionPassword = null;
+    if(args.length >= 4){
       try {
         port = Integer.parseInt(args[0]);
       } catch (NumberFormatException nfe) {
@@ -49,9 +65,10 @@ public class IoTServer {
       }
     }
 
-    if (args.length >= 2) {
-      int start = (args.length >= 3) ? 1 : 0;
-      keyStoreFilename = new String(args[start]);
+    if (args.length >= 3) {
+      int start = (args.length >= 4) ? 1 : 0;
+      passwdFileEncryptionPassword = new String(args[start]);
+      keyStoreFilename = new String(args[start + 1]);
       File tks = new File(keyStoreFilename);
       if(!tks.exists()){
         System.err.println("Error: supplied keystore file does not exist");
@@ -60,9 +77,9 @@ public class IoTServer {
       try {
         FileInputStream ksFIS = new FileInputStream(tks);
         KeyStore ks = KeyStore.getInstance("PKCS12");
-        ks.load(ksFIS, args[start + 1].toCharArray());
+        ks.load(ksFIS, args[start + 2].toCharArray());
         ksFIS.close();
-        keyStorePassword = new String(args[start + 1]);
+        keyStorePassword = new String(args[start + 2]);
       } catch (IOException e) {
         System.err.println("Error: keystore password is incorrect");
         System.exit(1);
@@ -98,6 +115,14 @@ public class IoTServer {
     }
 
     try{
+      if(debug) lg.log("[+] Configuring user file symmetric key");
+      SecretKeyFactory kf = null;
+      KeySpec ks = new PBEKeySpec(passwdFileEncryptionPassword.toCharArray(), KEY_SALT, KEY_ITERATIONS, KEY_LENGTH);
+      SecretKey secretKey = null;
+      kf = SecretKeyFactory.getInstance(KEY_ALGORITHM);
+      secretKey = kf.generateSecret(ks);
+
+
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
       if(debug) lg.log("[+] Setting up server thread list");
@@ -111,8 +136,31 @@ public class IoTServer {
       Map<String, Device> devices = new HashMap<>();
       Map<String, Domain> domains = new HashMap<>();
 
-      FileReader pfr = new FileReader(passwdFile);
-      BufferedReader pbr = new BufferedReader(pfr);
+      Cipher c = Cipher.getInstance(KEY_ALGORITHM);
+
+      // get encryption parameters
+      ObjectInputStream ois = new ObjectInputStream(new FileInputStream("passwd.parameters"));
+      byte[] keyParameters = (byte[]) ois.readObject();
+      AlgorithmParameters p = AlgorithmParameters.getInstance(KEY_ALGORITHM);
+      p.init(keyParameters);
+      c.init(Cipher.DECRYPT_MODE, secretKey, p);
+
+      FileInputStream pfis = new FileInputStream(passwdFile);
+      CipherInputStream pcis = new CipherInputStream(pfis, c);
+      File tmpDecryptedPasswd = File.createTempFile("passwd-",".dec");
+      FileOutputStream tdfos = new FileOutputStream(tmpDecryptedPasswd);
+
+      byte[] buffer = new byte[16];
+      int bytesRead;
+      while((bytesRead = pcis.read(buffer)) != - 1){
+        tdfos.write(buffer, 0, bytesRead);
+      }
+      pfis.close();
+      pcis.close();
+      tdfos.close();
+
+      FileReader tdfr = new FileReader(tmpDecryptedPasswd);
+      BufferedReader pbr = new BufferedReader(tdfr);
 
       String pLine;
       while((pLine = pbr.readLine()) != null){
@@ -136,7 +184,10 @@ public class IoTServer {
       }
 
       pbr.close();
-      pfr.close();
+      tdfr.close();
+      pcis.close();
+      pfis.close();
+      tmpDecryptedPasswd.delete();
 
       FileReader dfr = new FileReader(domainsFile);
       BufferedReader dbr = new BufferedReader(dfr);
@@ -221,7 +272,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, deviceFiles, cliSocket);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, deviceFiles, cliSocket, c, secretKey, p);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {
@@ -230,9 +281,12 @@ public class IoTServer {
 	        continue;
 	      }
       }
-    } catch (IOException e) {
-      if(debug){ System.err.println("A fatal error occurred!\n"+e.getMessage()); e.printStackTrace();}
+    } catch (Exception e) {
+      if(debug) {
+        System.err.println("FATAL ERROR: "+ e.getMessage());
+        e.printStackTrace();
+      }
       System.exit(1);
-    } 
+    }
   }
 }
