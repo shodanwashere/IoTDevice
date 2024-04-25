@@ -15,6 +15,14 @@ To make use of these functionalities, `iot-device` implements a simple command l
 
 The **server** application, `iot-server`, is a program that allows multiple clients to connect simultaneously, maintains information about registered devices, domains and users, authenticates and identifies users and collects and shares information received by various clients in an organized and persistent way.
 
+## Security Mecanisms
+The system has also incorporated a number of security mechanisms. Here are the ones that have been currently implemented, and ones that will be set up for a future release:
+- [x] Communications between the client and the server now use SSL
+- [ ] Two Factor Authentication using Keypairs and pseudorandomcodes sent to user emails
+- [ ] `passwd` file encrypted using PBE-AES-128
+- [ ] More Robust Remote Testing using Client Integrity
+- [ ] End-to-End Message Confidentiality with Key Wrapping using PBE-AES-128 and RSA-2048
+
 ## Building
 This project uses Maven to build and is implemented using aggregation (multi-modules). Building is fairly simple:
 
@@ -28,17 +36,21 @@ Once that is done, you will find the project's jar files inside the `target` dir
 ### `iot-server`
 
 ```
-$ java -jar iot-server-1.0.jar [port]
+$ java -jar iot-server-1.0.jar [port] <keystore> <key-storepassword>
 ```
 Where:
 - `[port]` is the TCP port used to accept client connections. If a value is not specified, the server will use port 12345 and accept connections on any interface.
+- `<keystore>` is the filename of a keystore containing an RSA keypair used for receiving SSL connections. The server does not accept unencrypted connections. The Keystore must contain one single private and public key pair, and it must be created in PKCS12 format. Accompanied with the codebase is a sample keystore with these specifications.
+- `<keystore-password>` is the password set on the keystore. Accompanying the codebase is a file containing the password for the sample keystore.
 
 ### `iot-device`
 
 ```
-$ java -jar iot-device-1.0.jar <serverAddress> <dev-id> <user-id>
+$ java -jar iot-device-1.0.jar <serverAddress> <truststore> <truststore-password> <dev-id> <user-id>
 ```
 Where:
 - `<serverAddress>` is the server's IP address following the schema `<ip/hostname>[:port]`. The IP/hostname of the server is mandatory, while the port is optional. By default, the client will connect on port 12345 on the remote server.
+- `<truststore>` is the filename of a keystore containing an emitted certificate containing the server's public key, which will be used to handshake an SSL connection with the server. The truststore will contain one single public certificate, and it must be created in PKCS12 format. Accompanied with the codebase is a sample truststore with these specifications.
+- `<truststore-password>` is the password set on the truststore. Accompanying the codebase is a file containing the password for the sample truststore.
 - `<dev-id>` is an integer that identifies the device.
 - `<user-id>` is a string that identifies the (email address of the) local user
