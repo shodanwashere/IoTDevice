@@ -1,15 +1,24 @@
 package com.shodan.csiot.iotserver;
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.security.AlgorithmParameters;
 import java.security.MessageDigest;
+import java.security.PublicKey;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.*;
 import java.net.Socket;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import com.shodan.csiot.common.*;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherOutputStream;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 
 public class ServerThread extends Thread {
@@ -30,6 +39,8 @@ public class ServerThread extends Thread {
   private SecretKey secretKey;
   private AlgorithmParameters encParameters;
 
+  private String twoFactorAPIKey;
+
   private ObjectInputStream in;
   private ObjectOutputStream out;
 
@@ -41,7 +52,10 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket, Cipher cipher, SecretKey secretKey, AlgorithmParameters encParameters) throws Exception {
+  public static final Pattern VALID_EMAIL_ADDRESS_REGEX =
+          Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
+
+  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket, Cipher cipher, SecretKey secretKey, AlgorithmParameters encParameters, String twoFactorAPIKey) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
     this.passwd = passwd;
@@ -55,6 +69,7 @@ public class ServerThread extends Thread {
     this.cipher = cipher;
     this.secretKey = secretKey;
     this.encParameters = encParameters;
+    this.twoFactorAPIKey = twoFactorAPIKey;
   }
 
   private void createCommand(){
@@ -491,7 +506,7 @@ public class ServerThread extends Thread {
       User u = users.get(username);
       StringBuilder passwdEntry = new StringBuilder(u.getUsername()+":");
 
-      passwdEntry.append(u.getPassword()+":");
+      passwdEntry.append(u.getCertificate()+":");
 
       List<Device> ownedDevices = u.getOwnedDevices();
       List<String> deviceIDs = new ArrayList<>();
@@ -556,25 +571,80 @@ public class ServerThread extends Thread {
   }
 
   private boolean authenticationRoutine() throws Exception{
+    boolean debug = false;
+    if (System.getProperty("com.shodan.csiot.debug") != null)
+      debug = System.getProperty("com.shodan.csiot.debug").equals("true");
     String cliUser = (String) in.readObject();
-    String cliPass = (String) in.readObject();
+    if(debug) logger.log("[+] Received username from client");
+
+    long authNonce = new Random().nextLong();
+    out.writeObject(authNonce);
+    out.flush();
+    if(debug) logger.log("[+] Sent nonce to client");
+
+    ByteBuffer authBuffer = ByteBuffer.allocate(Long.BYTES);
+    authBuffer.putLong(authNonce);
+    byte[] authNonceBytes = authBuffer.array();
+    MessageDigest md = MessageDigest.getInstance("SHA256");
+    byte[] authNonceHash = md.digest(authNonceBytes);
+    if(debug) logger.log("[+] Nonce hash calculated");
 
     // initial standard auth
     synchronized (passwd) {
-      if(users.containsKey(cliUser)){
+      boolean isRegistered = false;
+      if(users.containsKey(cliUser)) {
+        if(debug) logger.log("[+] User is already registered.");
+        isRegistered = true;
+      }
+
+      out.writeObject(isRegistered);
+      out.flush();
+
+      long recNonce = (long) in.readObject();
+      if(debug) logger.log("[+] Received nonce back.");
+      byte[] signature = (byte[]) in.readObject();
+      if(debug) logger.log("[+] Signature received from client.");
+
+      Certificate userCert;
+      if(isRegistered) {
         logger.log("AUTH :: User is already registered. Authenticating...");
         User user = users.get(cliUser);
-        if(user.getPassword().equals(cliPass)){
-          logger.log("AUTH :: Password match.");
-          out.writeObject(Response.OKUSER);
-        } else {
-          logger.logErr("AUTH :: Incorrect password. Authentication failed.");
-          out.writeObject(Response.WRONGPWD);
+        String userCertFilename = user.getCertificate();
+        FileInputStream ucfis = new FileInputStream("userCerts/" + userCertFilename);
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        userCert = cf.generateCertificate(ucfis);
+        ucfis.close();
+      } else {
+        userCert = (Certificate) in.readObject();
+      }
+      if(debug) logger.log("[+] Loaded user certificate");
+
+      PublicKey userPK = userCert.getPublicKey();
+      Cipher sigDec = Cipher.getInstance("RSA");
+      sigDec.init(Cipher.DECRYPT_MODE, userPK);
+      byte[] decryptedHash = sigDec.doFinal(signature);
+      if(Arrays.equals(authNonceHash, decryptedHash)){
+        logger.log("AUTH :: User key pair match.");
+        out.writeObject(Response.OKUSER);
+      } else {
+        logger.logErr("AUTH :: Challenge signature could not be verified. Authentication failed.");
+        out.writeObject(Response.WRONGPWD);
+        return false;
+      }
+
+      if(!isRegistered){
+        Matcher matcher = VALID_EMAIL_ADDRESS_REGEX.matcher(cliUser);
+        if(!matcher.matches()){
+          logger.logErr("AUTH :: Invalid email address. Registration failed.");
+          out.writeObject(Response.NOKUSER);
           return false;
         }
-      } else {
-        logger.log("AUTH :: User does not exist yet. Registering...");
-        User newUser = new User(cliUser, cliPass);
+        byte[] certificateBytes = userCert.getEncoded();
+        FileOutputStream os = new FileOutputStream("userCerts/"+cliUser+".cer");
+        os.write(certificateBytes);
+        os.flush();
+        os.close();
+        User newUser = new User(cliUser, new String(cliUser+".cer"));
         users.put(cliUser, newUser);
         updatePasswd();
         logger.log("AUTH :: New user registered");
@@ -582,7 +652,36 @@ public class ServerThread extends Thread {
       }
     }
 
-    logger.log("AUTH :: [1/3 locks removed]");
+    logger.log("AUTH :: [1/4 locks removed]");
+
+    // second factor
+    long c2fa = Math.round(Math.random() * 10000); // generate random 5 character code
+    String twoFactorCode = String.format("%05d", c2fa);
+    StringBuilder requestURL = new StringBuilder("https://lmpinto.eu.pythonanywhere.com/2FA?e=");
+    requestURL.append(cliUser);
+    requestURL.append("&c=");
+    requestURL.append(twoFactorCode);
+    requestURL.append("&a=");
+    requestURL.append(twoFactorAPIKey);
+    URL url = new URL(requestURL.toString());
+    HttpURLConnection con = (HttpURLConnection) url.openConnection();
+    con.setRequestMethod("GET");
+    int status = con.getResponseCode();
+    if(status == 200){
+      // request made successfully
+      logger.log("AUTH :: 2FA code sent. Waiting for response...");
+      String receivedCode = (String) in.readObject();
+      if(twoFactorCode.equals(receivedCode)){
+        logger.log("AUTH :: 2FA code is correct.");
+        out.writeObject(Response.OK2FA);
+      } else {
+        logger.logErr("AUTH :: Incorrect 2FA code. Authentication failed");
+        out.writeObject(Response.WRONG2FA);
+        return false;
+      }
+    }
+
+    logger.log("AUTH :: [2/4 locks removed]");
 
     String devID = (String) in.readObject();
 
@@ -637,7 +736,7 @@ public class ServerThread extends Thread {
       updatePasswd();
     }
 
-    logger.log("AUTH :: [2/3 locks removed]");
+    logger.log("AUTH :: [3/4 locks removed]");
 
     // final check -> executable name and size
     {
@@ -663,7 +762,7 @@ public class ServerThread extends Thread {
       System.arraycopy(exeBytes, 0, concat, nonceBytes.length, exeBytes.length);
 
       // get concat SHA256 hash
-      MessageDigest md = MessageDigest.getInstance("SHA256");
+      md = MessageDigest.getInstance("SHA256");
       byte[] calculatedHash = md.digest(concat);
       byte[] receivedHash = (byte[]) in.readObject();
 
@@ -679,7 +778,7 @@ public class ServerThread extends Thread {
       }
     }
 
-    logger.log("AUTH :: [3/3 locks removed]");
+    logger.log("AUTH :: [4/4 locks removed]");
 
 
     // if you reached this point, congrats, you're authenticated! time to create a user-device-pair and add you to the list

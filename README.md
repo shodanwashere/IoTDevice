@@ -18,7 +18,9 @@ The **server** application, `iot-server`, is a program that allows multiple clie
 ## Security Mecanisms
 The system has also incorporated a number of security mechanisms. Here are the ones that have been currently implemented, and ones that will be set up for a future release:
 - [x] Communications between the client and the server now use SSL
-- [ ] Two Factor Authentication using Keypairs and pseudorandomcodes sent to user emails
+- [x] Two Factor Authentication using Keypairs and pseudorandomcodes sent to user emails
+  - [x] First Factor: Asymmetric Encryption-based Login
+  - [x] Second Factor: Randomly Generated 5-digit code sent to email
 - [x] `passwd` file encrypted using PBE-AES-128
 - [x] More Robust Remote Testing using Client Integrity
 - [ ] End-to-End Message Confidentiality with Key Wrapping using PBE-AES-128 and RSA-2048
@@ -36,13 +38,14 @@ Once that is done, you will find the project's jar files inside the `target` dir
 ### `iot-server`
 
 ```
-$ java -jar iot-server-1.0.jar [port] <encryption-passwd> <keystore> <key-storepassword>
+$ java -jar iot-server-1.0.jar [port] <encryption-passwd> <keystore> <key-storepassword> <2FA-APIKey>
 ```
 Where:
 - `[port]` is the TCP port used to accept client connections. If a value is not specified, the server will use port 12345 and accept connections on any interface.
 - `<encryption-password>` is the password used to encrypt and decrypt the `passwd` file. To use a new password, you will need to generate a new `passwd` file, then encrypt it using the `InitEncryptor` utility, supplied with the codebase. This will generate the `passwd.parameters` file, which contains parameters like the IV and more for encrypting and decrypting the file.
 - `<keystore>` is the filename of a keystore containing an RSA keypair used for receiving SSL connections. The server does not accept unencrypted connections. The Keystore must contain one single private and public key pair, and it must be created in PKCS12 format. Accompanied with the codebase is a sample keystore with these specifications.
 - `<keystore-password>` is the password set on the keystore. Accompanying the codebase is a file containing the password for the sample keystore.
+- `<2FA-APIKey>` is an API Key given to each group to make use of an API endpoint to send 2FA codes to users. For security purposes, the API key will not be given to anyone.
 
 ### `iot-device`
 

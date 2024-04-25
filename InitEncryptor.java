@@ -22,9 +22,16 @@ public class InitEncryptor {
     SecretKeyFactory kf = SecretKeyFactory.getInstance(KEY_ALGORITHM);
     KeySpec ks = new PBEKeySpec(args[0].toCharArray(), KEY_SALT, KEY_ITERATIONS, KEY_LENGTH);
     SecretKey secretKey = kf.generateSecret(ks);
-
-    Cipher c = Cipher.getInstance("PBEWithHmacSHA256AndAES_128");
-    c.init(Cipher.ENCRYPT_MODE, secretKey);
+    File parameterFile = new File("encryption.parameters");
+    Cipher c = Cipher.getInstance(KEY_ALGORITHM);
+    AlgorithmParameters p = AlgorithmParameters.getInstance(KEY_ALGORITHM);
+    byte[] encodedParams;
+    if(parameterFile.exists()) {
+      ObjectInputStream ois = new ObjectInputStream(new FileInputStream(parameterFile));
+      encodedParams = (byte[]) ois.readObject();
+      p.init(encodedParams);
+      c.init(Cipher.ENCRYPT_MODE, secretKey, p);
+    } else { c.init(Cipher.ENCRYPT_MODE, secretKey); p.init(c.getParameters().getEncoded()); }
 
     FileInputStream fis = new FileInputStream("passwd");
     FileOutputStream fos = new FileOutputStream("passwd.cif");
@@ -36,13 +43,19 @@ public class InitEncryptor {
       cos.write(buffer, 0, bytesRead);
     }
 
-    AlgorithmParameters p = AlgorithmParameters.getInstance(KEY_ALGORITHM);
-    p.init(c.getParameters().getEncoded());
+//    FileInputStream dfis = new FileInputStream("domains");
+//    FileOutputStream dfos = new FileOutputStream("domains.cif");
+//    CipherOutputStream dcos = new CipherOutputStream(dfos, c);
 
-    ObjectOutputStream pos = new ObjectOutputStream(new FileOutputStream("passwd.parameters"));
-    pos.writeObject(c.getParameters().getEncoded()); pos.flush();
-    pos.close();
-    System.out.println(c.getParameters().getEncoded()); // tee passwd.parameters
+//    while((bytesRead = dfis.read(buffer)) != -1) {
+//      dcos.write(buffer, 0, bytesRead);
+//    }
+
+    if(!parameterFile.exists()){
+      ObjectOutputStream pos = new ObjectOutputStream(new FileOutputStream("encryption.parameters"));
+      pos.writeObject(c.getParameters().getEncoded()); pos.flush();
+      pos.close();
+    }
 
     cos.close();
     fos.close();
