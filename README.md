@@ -19,7 +19,7 @@ The **server** application, `iot-server`, is a program that allows multiple clie
 The system has also incorporated a number of security mechanisms. Here are the ones that have been currently implemented, and ones that will be set up for a future release:
 - [x] Communications between the client and the server now use SSL
 - [ ] Two Factor Authentication using Keypairs and pseudorandomcodes sent to user emails
-- [ ] `passwd` file encrypted using PBE-AES-128
+- [x] `passwd` file encrypted using PBE-AES-128
 - [x] More Robust Remote Testing using Client Integrity
 - [ ] End-to-End Message Confidentiality with Key Wrapping using PBE-AES-128 and RSA-2048
 
