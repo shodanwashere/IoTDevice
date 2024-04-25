@@ -2,13 +2,9 @@ package com.shodan.csiot;
 
 import com.shodan.csiot.iotserver.*;
 import com.shodan.csiot.common.UserDevicePair;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.BufferedReader;
-import java.io.FileWriter;
-import java.io.BufferedWriter;
-import java.io.IOException;
+
+import java.io.*;
+import java.security.KeyStore;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
@@ -30,16 +26,47 @@ public class IoTServer {
     System.out.print(logo.toString());
     System.out.println("More info at: https://github.com/shodanwashere/IoTDevice");
 
+
     Logger lg = new Logger("main-server");
     // handle args
     int port = 12345;
-    if(args.length >= 1){
+    String keyStoreFilename = null;
+    String keyStorePassword = null;
+    if(args.length >= 3){
       try {
         port = Integer.parseInt(args[0]);
       } catch (NumberFormatException nfe) {
-        lg.logErr("Error: expected port number, got "+args[0]+"\nUsage: iotserver <0-65535>");
+        lg.logErr("Error: expected port number, got "+args[0]+"\nUsage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password>");
         System.exit(1);
       }
+    }
+
+    if (args.length >= 2) {
+      int start = (port == 12345) ? 0 : 1;
+      keyStoreFilename = new String(args[start]);
+      File tks = new File(keyStoreFilename);
+      if(!tks.exists()){
+        System.err.println("Error: supplied keystore file does not exist");
+        System.exit(1);
+      }
+      try {
+        FileInputStream ksFIS = new FileInputStream(tks);
+        KeyStore ks = KeyStore.getInstance("JCEKS");
+        ks.load(ksFIS, args[start + 1].toCharArray());
+        ksFIS.close();
+        keyStorePassword = new String(args[start + 1]);
+      } catch (IOException e) {
+        System.err.println("Error: keystore password is incorrect");
+        System.exit(1);
+      } catch (Exception e) {
+        System.err.println("Error: "+e.getMessage());
+        e.printStackTrace();
+        System.exit(1);
+      }
+    } else {
+      System.err.println("Error: not enough args");
+      System.err.println("Usage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password>");
+      System.exit(1);
     }
 
     // open passwd file
@@ -48,6 +75,9 @@ public class IoTServer {
       lg.logErr("Error: passwd file does not exist. Please create a file called 'passwd' with at least one 'user:password' pair.");
       System.exit(1);
     }
+
+    System.setProperty("javax.net.ssl.keyStore", keyStoreFilename);
+    System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
 
     // open domains file
     File domainsFile = new File("domains");
