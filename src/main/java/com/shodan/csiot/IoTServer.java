@@ -14,9 +14,16 @@ import java.net.ServerSocket;
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 
+import javax.net.ServerSocketFactory;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
+
 public class IoTServer {
   public static void main(String[] args) {
     long startupStart = System.currentTimeMillis();
+    boolean debug = false;
+    if (System.getProperty("com.shodan.csiot.debug") != null)
+      debug = System.getProperty("com.shodan.csiot.debug").equals("true");
     StringBuilder logo = new StringBuilder();
     logo.append(".-.    .-----. .--.\n");
     logo.append(": :    `-. .-': .--'\n");
@@ -29,6 +36,7 @@ public class IoTServer {
 
     Logger lg = new Logger("main-server");
     // handle args
+    if(debug) lg.log("[+] Handling command line arguments");
     int port = 12345;
     String keyStoreFilename = null;
     String keyStorePassword = null;
@@ -42,7 +50,7 @@ public class IoTServer {
     }
 
     if (args.length >= 2) {
-      int start = (port == 12345) ? 0 : 1;
+      int start = (args.length >= 3) ? 1 : 0;
       keyStoreFilename = new String(args[start]);
       File tks = new File(keyStoreFilename);
       if(!tks.exists()){
@@ -51,7 +59,7 @@ public class IoTServer {
       }
       try {
         FileInputStream ksFIS = new FileInputStream(tks);
-        KeyStore ks = KeyStore.getInstance("JCEKS");
+        KeyStore ks = KeyStore.getInstance("PKCS12");
         ks.load(ksFIS, args[start + 1].toCharArray());
         ksFIS.close();
         keyStorePassword = new String(args[start + 1]);
@@ -69,6 +77,11 @@ public class IoTServer {
       System.exit(1);
     }
 
+    if(debug) lg.log("[+] Adding keystore and password to system properties");
+    System.setProperty("javax.net.ssl.keyStore", keyStoreFilename);
+    System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
+
+    if(debug) lg.log("[+] Checking password file");
     // open passwd file
     File passwdFile = new File("passwd");
     if(!passwdFile.exists()) {
@@ -76,9 +89,7 @@ public class IoTServer {
       System.exit(1);
     }
 
-    System.setProperty("javax.net.ssl.keyStore", keyStoreFilename);
-    System.setProperty("javax.net.ssl.keyStorePassword", keyStorePassword);
-
+    if(debug) lg.log("[+] Checking domains file");
     // open domains file
     File domainsFile = new File("domains");
     if(!domainsFile.exists()){
@@ -89,8 +100,11 @@ public class IoTServer {
     try{
       // set up a list of threads
       // we'll use this to keep track of how many threads are running
+      if(debug) lg.log("[+] Setting up server thread list");
       List<ServerThread> threads = new ArrayList<>();
+      if(debug) lg.log("[+] Setting up user device pair list");
       List<UserDevicePair> currentlyLoggedInUDPs = new ArrayList<>();
+      if(debug) lg.log("[+] Reading system data into memory");
       Map<String, File> deviceFiles = new HashMap<>();
       // set up currently registered devices
       Map<String, User> users = new HashMap<>();
@@ -168,10 +182,13 @@ public class IoTServer {
         deviceFiles.put(dev.getId(), deviceDir);
       }
 
+      if(debug) lg.log("[+] Opening SSL server socket");
       // open server socket
-      ServerSocket srvSocket = new ServerSocket(port);
+      ServerSocketFactory ssf = SSLServerSocketFactory.getDefault();
+      SSLServerSocket srvSocket = (SSLServerSocket) ssf.createServerSocket(port);
 
       // this shutdown hook will mark all threads for shutdown, so they will shutdown safely.
+      if(debug) lg.log("[+] Setting up shutdown hook");
       Signal.handle(new Signal("INT"), new SignalHandler() {
         @Override
         public void handle(Signal signal) {
@@ -194,6 +211,7 @@ public class IoTServer {
         }
       });
 
+      if(debug) lg.log("[+] System startup finished");
       long startupEnd = System.currentTimeMillis();
       long elapsed = startupEnd - startupStart;
       System.out.println("Startup time: "+elapsed+"ms");
@@ -213,6 +231,7 @@ public class IoTServer {
 	      }
       }
     } catch (IOException e) {
+      if(debug){ System.err.println("A fatal error occurred!\n"+e.getMessage()); e.printStackTrace();}
       System.exit(1);
     } 
   }
