@@ -36,13 +36,14 @@ Once that is done, you will find the project's jar files inside the `target` dir
 ### `iot-server`
 
 ```
-$ java -jar iot-server-1.0.jar [port] <encryption-passwd> <keystore> <key-storepassword>
+$ java -jar iot-server-1.0.jar [port] <encryption-passwd> <keystore> <key-storepassword> <2FA-APIKey>
 ```
 Where:
 - `[port]` is the TCP port used to accept client connections. If a value is not specified, the server will use port 12345 and accept connections on any interface.
 - `<encryption-password>` is the password used to encrypt and decrypt the `passwd` file. To use a new password, you will need to generate a new `passwd` file, then encrypt it using the `InitEncryptor` utility, supplied with the codebase. This will generate the `passwd.parameters` file, which contains parameters like the IV and more for encrypting and decrypting the file.
 - `<keystore>` is the filename of a keystore containing an RSA keypair used for receiving SSL connections. The server does not accept unencrypted connections. The Keystore must contain one single private and public key pair, and it must be created in PKCS12 format. Accompanied with the codebase is a sample keystore with these specifications.
 - `<keystore-password>` is the password set on the keystore. Accompanying the codebase is a file containing the password for the sample keystore.
+- `<2FA-APIKey>` is an API Key given to each group to make use of an API endpoint to send 2FA codes to users. For security purposes, the API key will not be given to anyone.
 
 ### `iot-device`
 
