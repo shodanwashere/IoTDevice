@@ -615,7 +615,7 @@ public class ServerThread extends Thread {
       Long executableSize = (Long) in.readObject();
 
       Boolean executableNamesAreEqual = executableName.equals("iotdevice-1.0.jar");
-      Boolean executableSizesAreEqual = (executableSize > 34590 && executableSize < 34610);
+      Boolean executableSizesAreEqual = executableSize == 35654;
 
       if(executableNamesAreEqual && executableSizesAreEqual){
         logger.log("AUTH :: Executable test passed.");
