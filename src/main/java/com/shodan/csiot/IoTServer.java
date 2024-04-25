@@ -56,17 +56,18 @@ public class IoTServer {
     String keyStoreFilename = null;
     String keyStorePassword = null;
     String passwdFileEncryptionPassword = null;
-    if(args.length >= 4){
+    String twoFactorAPIKey = null;
+    if(args.length >= 5){
       try {
         port = Integer.parseInt(args[0]);
       } catch (NumberFormatException nfe) {
-        lg.logErr("Error: expected port number, got "+args[0]+"\nUsage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password>");
+        lg.logErr("Error: expected port number, got "+args[0]+"\nUsage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password> <2FA-APIKey>");
         System.exit(1);
       }
     }
 
-    if (args.length >= 3) {
-      int start = (args.length >= 4) ? 1 : 0;
+    if (args.length >= 4) {
+      int start = (args.length >= 5) ? 1 : 0;
       passwdFileEncryptionPassword = new String(args[start]);
       keyStoreFilename = new String(args[start + 1]);
       File tks = new File(keyStoreFilename);
@@ -88,9 +89,10 @@ public class IoTServer {
         e.printStackTrace();
         System.exit(1);
       }
+      twoFactorAPIKey = new String(args[start + 3]);
     } else {
       System.err.println("Error: not enough args");
-      System.err.println("Usage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password>");
+      System.err.println("Usage: java -jar iotserver.jar [0-65535] <kesytore> <keystore-password> <2FA-APIKey>");
       System.exit(1);
     }
 
@@ -272,7 +274,7 @@ public class IoTServer {
         Socket cliSocket = srvSocket.accept();
         ServerThread st = new ServerThread();
         try{
-          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, deviceFiles, cliSocket, c, secretKey, p);
+          st.set(passwdFile, domainsFile, currentlyLoggedInUDPs, users, devices, domains, deviceFiles, cliSocket, c, secretKey, p, twoFactorAPIKey);
           threads.add(st); st.start();
           lg.log("got connection at <"+cliSocket.getRemoteSocketAddress().toString()+">");
 	      } catch (Exception e) {

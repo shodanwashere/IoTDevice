@@ -1,11 +1,16 @@
 package com.shodan.csiot.iotserver;
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.security.AlgorithmParameters;
 import java.security.MessageDigest;
 import java.util.*;
 import java.net.Socket;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import com.shodan.csiot.common.*;
 
 import javax.crypto.Cipher;
@@ -30,6 +35,8 @@ public class ServerThread extends Thread {
   private SecretKey secretKey;
   private AlgorithmParameters encParameters;
 
+  private String twoFactorAPIKey;
+
   private ObjectInputStream in;
   private ObjectOutputStream out;
 
@@ -41,7 +48,10 @@ public class ServerThread extends Thread {
     shutdownInitiated = true;
   }
 
-  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket, Cipher cipher, SecretKey secretKey, AlgorithmParameters encParameters) throws Exception {
+  public static final Pattern VALID_EMAIL_ADDRESS_REGEX =
+          Pattern.compile("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,6}$", Pattern.CASE_INSENSITIVE);
+
+  public void set(File passwd, File domainsFile, List<UserDevicePair> currentlyLoggedInUDPs, Map<String, User> users, Map<String, Device> devices, Map<String, Domain> domains, Map<String, File> deviceFiles, Socket cliSocket, Cipher cipher, SecretKey secretKey, AlgorithmParameters encParameters, String twoFactorAPIKey) throws Exception {
     // set up socket, file descriptors and shutdown flag
     this.cliSocket = cliSocket;
     this.passwd = passwd;
@@ -55,6 +65,7 @@ public class ServerThread extends Thread {
     this.cipher = cipher;
     this.secretKey = secretKey;
     this.encParameters = encParameters;
+    this.twoFactorAPIKey = twoFactorAPIKey;
   }
 
   private void createCommand(){
@@ -557,6 +568,7 @@ public class ServerThread extends Thread {
 
   private boolean authenticationRoutine() throws Exception{
     String cliUser = (String) in.readObject();
+
     String cliPass = (String) in.readObject();
 
     // initial standard auth
@@ -574,6 +586,12 @@ public class ServerThread extends Thread {
         }
       } else {
         logger.log("AUTH :: User does not exist yet. Registering...");
+        Matcher matcher = VALID_EMAIL_ADDRESS_REGEX.matcher(cliUser);
+        if(!matcher.matches()){
+          logger.logErr("AUTH :: Invalid email address. Registration failed.");
+          out.writeObject(Response.NOKUSER);
+          return false;
+        }
         User newUser = new User(cliUser, cliPass);
         users.put(cliUser, newUser);
         updatePasswd();
@@ -582,7 +600,36 @@ public class ServerThread extends Thread {
       }
     }
 
-    logger.log("AUTH :: [1/3 locks removed]");
+    logger.log("AUTH :: [1/4 locks removed]");
+
+    // second factor
+    long c2fa = Math.round(Math.random() * 10000); // generate random 5 character code
+    String twoFactorCode = String.format("%05d", c2fa);
+    StringBuilder requestURL = new StringBuilder("https://lmpinto.eu.pythonanywhere.com/2FA?e=");
+    requestURL.append(cliUser);
+    requestURL.append("&c=");
+    requestURL.append(twoFactorCode);
+    requestURL.append("&a=");
+    requestURL.append(twoFactorAPIKey);
+    URL url = new URL(requestURL.toString());
+    HttpURLConnection con = (HttpURLConnection) url.openConnection();
+    con.setRequestMethod("GET");
+    int status = con.getResponseCode();
+    if(status == 200){
+      // request made successfully
+      logger.log("AUTH :: 2FA code sent. Waiting for response...");
+      String receivedCode = (String) in.readObject();
+      if(twoFactorCode.equals(receivedCode)){
+        logger.log("AUTH :: 2FA code is correct.");
+        out.writeObject(Response.OK2FA);
+      } else {
+        logger.logErr("AUTH :: Incorrect 2FA code. Authentication failed");
+        out.writeObject(Response.WRONG2FA);
+        return false;
+      }
+    }
+
+    logger.log("AUTH :: [2/4 locks removed]");
 
     String devID = (String) in.readObject();
 
@@ -637,7 +684,7 @@ public class ServerThread extends Thread {
       updatePasswd();
     }
 
-    logger.log("AUTH :: [2/3 locks removed]");
+    logger.log("AUTH :: [3/4 locks removed]");
 
     // final check -> executable name and size
     {
@@ -679,7 +726,7 @@ public class ServerThread extends Thread {
       }
     }
 
-    logger.log("AUTH :: [3/3 locks removed]");
+    logger.log("AUTH :: [4/4 locks removed]");
 
 
     // if you reached this point, congrats, you're authenticated! time to create a user-device-pair and add you to the list

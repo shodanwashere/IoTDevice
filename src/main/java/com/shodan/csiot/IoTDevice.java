@@ -72,14 +72,31 @@ public class IoTDevice {
         case OKUSER:
         case OKNEWUSER: System.out.println("Password authentication passed."); break;
         case WRONGPWD: System.err.println("Password authentication failed."); return false;
+        case NOKUSER: System.err.println("Invalid email."); return false;
+        case NOK: System.err.println("Server communication failed."); return false;
+      }
+
+      String twoFactorCode;
+      if(console != null) {
+        twoFactorCode = new String(console.readLine("Please insert the 5-digit 2FA code you received at "+username+": "));
+      } else {
+        return false;
+      }
+
+      out.writeObject(twoFactorCode);
+      out.flush();
+      Response r2 = (Response) in.readObject();
+      switch (r2){
+        case OK2FA: System.out.println("2FA validated."); break;
+        case WRONG2FA: System.err.println("2FA validation failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
       }
 
       String toSend = deviceID.toString();
       out.writeObject(toSend);
       out.flush();
-      Response r2 = (Response) in.readObject();
-      switch(r2){
+      Response r3 = (Response) in.readObject();
+      switch(r3){
         case OKDEVID: System.out.println("Device authentication passed."); break;
         case NOKDEVID: System.err.println("Device authentication failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
@@ -115,8 +132,8 @@ public class IoTDevice {
       out.writeObject(hash);
       out.flush();
 
-      Response r3 = (Response) in.readObject();
-      switch(r3){
+      Response r4 = (Response) in.readObject();
+      switch(r4){
         case OKTESTED: System.out.println("File authentication passed."); break;
         case NOKTESTED: System.err.println("File authentication failed."); return false;
         case NOK: System.err.println("Server communication failed."); return false;
