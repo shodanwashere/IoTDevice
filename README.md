@@ -20,7 +20,7 @@ The system has also incorporated a number of security mechanisms. Here are the o
 - [x] Communications between the client and the server now use SSL
 - [ ] Two Factor Authentication using Keypairs and pseudorandomcodes sent to user emails
 - [ ] `passwd` file encrypted using PBE-AES-128
-- [ ] More Robust Remote Testing using Client Integrity
+- [x] More Robust Remote Testing using Client Integrity
 - [ ] End-to-End Message Confidentiality with Key Wrapping using PBE-AES-128 and RSA-2048
 
 ## Building
