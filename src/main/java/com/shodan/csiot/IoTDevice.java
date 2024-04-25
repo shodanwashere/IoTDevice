@@ -2,7 +2,8 @@ package com.shodan.csiot;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-import java.security.MessageDigest;
+import java.security.*;
+import java.security.cert.Certificate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.net.Socket;
@@ -10,6 +11,8 @@ import sun.misc.Signal;
 import sun.misc.SignalHandler;
 import com.shodan.csiot.common.*;
 
+import javax.crypto.Cipher;
+import javax.crypto.Mac;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.SocketFactory;
@@ -25,6 +28,8 @@ public class IoTDevice {
   private static String username;
   private static Integer deviceID;
 
+  private static KeyStore keyStore;
+  private static String storePassword;
 
   /**
    * Displays a help message to the CLI
@@ -57,16 +62,30 @@ public class IoTDevice {
 
       // using the console class! by using the console class to read the password, we read input
       // while masking the output, allowing for more secure logins!
-      String password;
-      Console console = System.console();
-      if(console != null) {
-        password = new String(console.readPassword("Password: "));
-      } else {
-        return false;
-      }
+      long authNonce = (long) in.readObject();
+      boolean reg = (boolean) in.readObject();
 
-      out.writeObject(password);
+
+      Key pk = keyStore.getKey("clientprivatekey", storePassword.toCharArray());
+      MessageDigest md = MessageDigest.getInstance("SHA256");
+
+      ByteBuffer authBuffer = ByteBuffer.allocate(Long.BYTES);
+      authBuffer.putLong(authNonce);
+      byte[] authNonceBytes = authBuffer.array();
+      byte[] authNonceHash = md.digest(authNonceBytes);
+      Cipher c = Cipher.getInstance("RSA");
+      c.init(Cipher.ENCRYPT_MODE, pk);
+      byte[] signature = c.doFinal(authNonceHash);
+
+      out.writeObject(authNonce);
       out.flush();
+      out.writeObject(signature);
+      if(!reg) {
+        Certificate cert = keyStore.getCertificate("clientprivatekey");
+        out.writeObject(cert);
+      }
+      out.flush();
+
       Response r1 = (Response) in.readObject();
       switch(r1){
         case OKUSER:
@@ -77,6 +96,7 @@ public class IoTDevice {
       }
 
       String twoFactorCode;
+      Console console = System.console();
       if(console != null) {
         twoFactorCode = new String(console.readLine("Please insert the 5-digit 2FA code you received at "+username+": "));
       } else {
@@ -126,7 +146,7 @@ public class IoTDevice {
       System.arraycopy(exeBytes, 0, concat, nonceBytes.length, exeBytes.length);
 
       // get concat SHA256 hash
-      MessageDigest md = MessageDigest.getInstance("SHA256");
+      md = MessageDigest.getInstance("SHA256");
       byte[] hash = md.digest(concat);
 
       out.writeObject(hash);
@@ -566,24 +586,29 @@ public class IoTDevice {
    */
   public static void main(String[] args){
     // process args
-    if(args.length < 5){
-      System.err.println("Error: not enough args\nUsage: iotdevice <IP/hostname>[:port] <truststore> <truststore-password> <dev-id> <user-id>");
+    if(args.length < 6){
+      System.err.println("Error: not enough args\nUsage: iotdevice <IP/hostname>[:port] <truststore> <keystore> <store-password> <dev-id> <user-id>");
       System.exit(1);
     }
 
     try {
       String trustStoreFilename = new String(args[1]);
-      String trustStorePassword = new String(args[2]);
+      String keyStoreFilename = new String(args[2]);
+      storePassword = new String(args[3]);
       File tts = new File(trustStoreFilename);
       if(!tts.exists()){
         System.err.println("Error: supplied truststore does not exist");
         System.exit(1);
       }
       System.setProperty("javax.net.ssl.trustStore", trustStoreFilename);
-      System.setProperty("javax.net.ssl.trustStorePassword", trustStorePassword);
+      System.setProperty("javax.net.ssl.trustStorePassword", storePassword);
 
-      username = new String(args[4]);
-      deviceID = Integer.parseInt(args[3]);
+      FileInputStream kfile = new FileInputStream(keyStoreFilename);
+      keyStore = KeyStore.getInstance("PKCS12");
+      keyStore.load(kfile, storePassword.toCharArray());
+
+      username = new String(args[5]);
+      deviceID = Integer.parseInt(args[4]);
 
       String address = null;
       int port = 12345;

@@ -6,6 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.security.AlgorithmParameters;
 import java.security.MessageDigest;
+import java.security.PublicKey;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
 import java.util.*;
 import java.net.Socket;
 import java.util.regex.Matcher;
@@ -15,6 +18,7 @@ import com.shodan.csiot.common.*;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherOutputStream;
+import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 
 public class ServerThread extends Thread {
@@ -502,7 +506,7 @@ public class ServerThread extends Thread {
       User u = users.get(username);
       StringBuilder passwdEntry = new StringBuilder(u.getUsername()+":");
 
-      passwdEntry.append(u.getPassword()+":");
+      passwdEntry.append(u.getCertificate()+":");
 
       List<Device> ownedDevices = u.getOwnedDevices();
       List<String> deviceIDs = new ArrayList<>();
@@ -567,32 +571,80 @@ public class ServerThread extends Thread {
   }
 
   private boolean authenticationRoutine() throws Exception{
+    boolean debug = false;
+    if (System.getProperty("com.shodan.csiot.debug") != null)
+      debug = System.getProperty("com.shodan.csiot.debug").equals("true");
     String cliUser = (String) in.readObject();
+    if(debug) logger.log("[+] Received username from client");
 
-    String cliPass = (String) in.readObject();
+    long authNonce = new Random().nextLong();
+    out.writeObject(authNonce);
+    out.flush();
+    if(debug) logger.log("[+] Sent nonce to client");
+
+    ByteBuffer authBuffer = ByteBuffer.allocate(Long.BYTES);
+    authBuffer.putLong(authNonce);
+    byte[] authNonceBytes = authBuffer.array();
+    MessageDigest md = MessageDigest.getInstance("SHA256");
+    byte[] authNonceHash = md.digest(authNonceBytes);
+    if(debug) logger.log("[+] Nonce hash calculated");
 
     // initial standard auth
     synchronized (passwd) {
-      if(users.containsKey(cliUser)){
+      boolean isRegistered = false;
+      if(users.containsKey(cliUser)) {
+        if(debug) logger.log("[+] User is already registered.");
+        isRegistered = true;
+      }
+
+      out.writeObject(isRegistered);
+      out.flush();
+
+      long recNonce = (long) in.readObject();
+      if(debug) logger.log("[+] Received nonce back.");
+      byte[] signature = (byte[]) in.readObject();
+      if(debug) logger.log("[+] Signature received from client.");
+
+      Certificate userCert;
+      if(isRegistered) {
         logger.log("AUTH :: User is already registered. Authenticating...");
         User user = users.get(cliUser);
-        if(user.getPassword().equals(cliPass)){
-          logger.log("AUTH :: Password match.");
-          out.writeObject(Response.OKUSER);
-        } else {
-          logger.logErr("AUTH :: Incorrect password. Authentication failed.");
-          out.writeObject(Response.WRONGPWD);
-          return false;
-        }
+        String userCertFilename = user.getCertificate();
+        FileInputStream ucfis = new FileInputStream("userCerts/" + userCertFilename);
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        userCert = cf.generateCertificate(ucfis);
+        ucfis.close();
       } else {
-        logger.log("AUTH :: User does not exist yet. Registering...");
+        userCert = (Certificate) in.readObject();
+      }
+      if(debug) logger.log("[+] Loaded user certificate");
+
+      PublicKey userPK = userCert.getPublicKey();
+      Cipher sigDec = Cipher.getInstance("RSA");
+      sigDec.init(Cipher.DECRYPT_MODE, userPK);
+      byte[] decryptedHash = sigDec.doFinal(signature);
+      if(Arrays.equals(authNonceHash, decryptedHash)){
+        logger.log("AUTH :: User key pair match.");
+        out.writeObject(Response.OKUSER);
+      } else {
+        logger.logErr("AUTH :: Challenge signature could not be verified. Authentication failed.");
+        out.writeObject(Response.WRONGPWD);
+        return false;
+      }
+
+      if(!isRegistered){
         Matcher matcher = VALID_EMAIL_ADDRESS_REGEX.matcher(cliUser);
         if(!matcher.matches()){
           logger.logErr("AUTH :: Invalid email address. Registration failed.");
           out.writeObject(Response.NOKUSER);
           return false;
         }
-        User newUser = new User(cliUser, cliPass);
+        byte[] certificateBytes = userCert.getEncoded();
+        FileOutputStream os = new FileOutputStream("userCerts/"+cliUser+".cer");
+        os.write(certificateBytes);
+        os.flush();
+        os.close();
+        User newUser = new User(cliUser, new String(cliUser+".cer"));
         users.put(cliUser, newUser);
         updatePasswd();
         logger.log("AUTH :: New user registered");
@@ -710,7 +762,7 @@ public class ServerThread extends Thread {
       System.arraycopy(exeBytes, 0, concat, nonceBytes.length, exeBytes.length);
 
       // get concat SHA256 hash
-      MessageDigest md = MessageDigest.getInstance("SHA256");
+      md = MessageDigest.getInstance("SHA256");
       byte[] calculatedHash = md.digest(concat);
       byte[] receivedHash = (byte[]) in.readObject();
 

@@ -1,22 +1,23 @@
 package com.shodan.csiot.iotserver;
 
+import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.List;
 
 public class User {
     private String username;
-    private String password;
+    private String certificateFilename;
     private List<Device> ownedDevices;
 
-    public User(String username, String password){
+    public User(String username, String certificate){
         this.username = username;
-        this.password = password;
+        this.certificateFilename = certificate;
         this.ownedDevices = new ArrayList<>();
     }
 
-    public User(String username, String password, List<Device> ownedDevices){
+    public User(String username, String certificate, List<Device> ownedDevices){
         this.username = username;
-        this.password = password;
+        this.certificateFilename = certificate;
         this.ownedDevices = ownedDevices;
     }
 
@@ -24,8 +25,8 @@ public class User {
         return username;
     }
 
-    public String getPassword() {
-        return password;
+    public String getCertificate() {
+        return certificateFilename;
     }
 
     public List<Device> getOwnedDevices(){
