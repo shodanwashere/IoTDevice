@@ -6,13 +6,17 @@ import java.net.Socket;
 import sun.misc.Signal;
 import sun.misc.SignalHandler;
 import com.shodan.csiot.common.*;
+
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.SocketFactory;
 import java.util.Scanner;
 
 /**
  *
  */
 public class IoTDevice {
-  public static Socket clientSocket;  
+  public static SSLSocket clientSocket;
   public static Scanner input = new Scanner(System.in);
 
   private static String username;
@@ -525,14 +529,24 @@ public class IoTDevice {
    */
   public static void main(String[] args){
     // process args
-    if(args.length < 3){
-      System.err.println("Error: not enough args\nUsage: iotdevice <IP/hostname>[:port] <dev-id> <user-id>");
+    if(args.length < 5){
+      System.err.println("Error: not enough args\nUsage: iotdevice <IP/hostname>[:port] <truststore> <truststore-password> <dev-id> <user-id>");
       System.exit(1);
     }
 
     try {
-      username = new String(args[2]);
-      deviceID = Integer.parseInt(args[1]);
+      String trustStoreFilename = new String(args[1]);
+      String trustStorePassword = new String(args[2]);
+      File tts = new File(trustStoreFilename);
+      if(!tts.exists()){
+        System.err.println("Error: supplied truststore does not exist");
+        System.exit(1);
+      }
+      System.setProperty("javax.net.ssl.trustStore", trustStoreFilename);
+      System.setProperty("javax.net.ssl.trustStorePassword", trustStorePassword);
+
+      username = new String(args[4]);
+      deviceID = Integer.parseInt(args[3]);
 
       String address = null;
       int port = 12345;
@@ -541,7 +555,9 @@ public class IoTDevice {
       if(addressAndPort.length == 2){
         port = Integer.parseInt(addressAndPort[1]);
       }
-      clientSocket = new Socket(address, port);
+
+      SocketFactory sf = SSLSocketFactory.getDefault();
+      clientSocket = (SSLSocket) sf.createSocket(address, port);
       // System.out.println("Passed all arg checks");
 
       // get streams from socket
