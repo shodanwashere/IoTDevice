@@ -4,6 +4,9 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.security.*;
 import java.security.cert.Certificate;
+import java.sql.Array;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.net.Socket;
@@ -43,6 +46,7 @@ public class IoTDevice {
     System.out.println("- EI <filename.jpg>  - Send image to the server");
     System.out.println("- RT <dm>            - Receive latest temperature data from devices in the 'dm' domain if you have permissions");
     System.out.println("- RI <user>:<dev-id> - Receive the device image from the server, as long as you have permissions");
+    System.out.println("- MYDOMAINS          - Receive a list of domains on which this device is currently registered");
     System.out.println("- HELP               - Display this message");
     System.out.println("- CLEAR              - Clear the screen");
     System.out.println("- EXIT               - Terminate connection");
@@ -196,6 +200,7 @@ public class IoTDevice {
         case "EI": sendImageCommand(command, in, out); break;
         case "RT": receiveTemperatureCommand(command, in, out); break;
         case "RI": receiveImageCommand(command, in, out); break;
+        case "MYDOMAINS": myDomainsCommand(in, out); break;
         case "HELP": help(); break;
         case "CLEAR": clearScreen(); break;
         case "EXIT": exitCommand(in, out); return;
@@ -563,6 +568,41 @@ public class IoTDevice {
     }
 
     return;
+  }
+
+  public static void myDomainsCommand(ObjectInputStream in, ObjectOutputStream out){
+    try {
+      out.writeObject(Command.MYDOMAINS);
+      out.flush();
+      Thread.sleep(200);
+
+      Response r = (Response) in.readObject();
+      switch(r){
+        case OK: {
+          String recData;
+          List<String> domains = new ArrayList<>();
+          while((recData = (String) in.readObject()) != null){
+            domains.add(new String(recData));
+          }
+          if(domains.isEmpty()){
+            System.out.println("This device is not registered on any domains.");
+          } else {
+            System.out.println("This device is registered on the following domains:");
+            for(String d: domains){
+              System.out.println("- "+d);
+            }
+          }
+          break;
+        }
+        case NOK: System.err.println("Error: failed to communicate with server"); break;
+      }
+    } catch (IOException e) {
+      System.err.println("Error: failed to communicate with server");
+    } catch (ClassNotFoundException e) {
+      // do nothing
+    } catch (InterruptedException e) {
+      // do nothing
+    }
   }
 
   /**

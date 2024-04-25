@@ -483,6 +483,33 @@ public class ServerThread extends Thread {
     }
   }
 
+  private void myDomainsCommand(){
+    StringBuilder log = new StringBuilder("MYDOMAINS");
+    try{
+      out.writeObject(Response.OK);
+      synchronized (domains) {
+        Device d = currUDP.getDevice();
+        Set<String> domainKeys = domains.keySet();
+        for(String dk: domainKeys){
+          Domain dom = domains.get(dk);
+          if(dom.getRegisteredDevices().contains(d)) {
+            out.writeObject(dk);
+            out.flush();
+          }
+        }
+        out.writeObject(null);
+        out.flush();
+      }
+      log.append(" :: OK");
+    } catch (Exception e) {
+      out.writeObject(Response.NOK);
+      log.append(" :: NOK");
+    } finally {
+      logger.log(log.toString());
+      return;
+    }
+  }
+
   // do not call this method without first performing synchronize(deviceFiles)
   private void updateDeviceFiles(){
     for(String d: devices.keySet()){
@@ -836,6 +863,7 @@ public class ServerThread extends Thread {
           case EI: this.sendImageCommand(); break;
           case RT: this.receiveTemperatureCommand(); break;
           case RI: this.receiveImageCommand(); break;
+          case MYDOMAINS: this.myDomainsCommand(); break;
         }
       } catch(IOException e) {
         e.printStackTrace();

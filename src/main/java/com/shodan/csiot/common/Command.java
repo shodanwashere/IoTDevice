@@ -8,5 +8,6 @@ public enum Command {
   EI,
   RT,
   RI,
+  MYDOMAINS,
   EOF
 }
