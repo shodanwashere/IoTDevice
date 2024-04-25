@@ -1,5 +1,8 @@
 package com.shodan.csiot.iotserver;
 import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.util.*;
 import java.net.Socket;
 import com.shodan.csiot.common.*;
@@ -612,12 +615,34 @@ public class ServerThread extends Thread {
     // final check -> executable name and size
     {
       String executableName = (String) in.readObject();
-      Long executableSize = (Long) in.readObject();
 
       Boolean executableNamesAreEqual = executableName.equals("iotdevice-1.0.jar");
-      Boolean executableSizesAreEqual = executableSize == 35654;
 
-      if(executableNamesAreEqual && executableSizesAreEqual){
+      File exe = new File("iotdevice-1.0.jar");
+
+      long nonce = new Random().nextLong();
+
+      out.writeObject(nonce);
+      out.flush();
+
+      // https://stackoverflow.com/questions/4485128/how-do-i-convert-long-to-byte-and-back-in-java
+      ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+      buffer.putLong(nonce);
+      byte[] nonceBytes = buffer.array();
+
+      byte[] exeBytes = Files.readAllBytes(exe.toPath());
+      byte[] concat = new byte[nonceBytes.length + exeBytes.length];
+      System.arraycopy(nonceBytes, 0, concat, 0, nonceBytes.length);
+      System.arraycopy(exeBytes, 0, concat, nonceBytes.length, exeBytes.length);
+
+      // get concat SHA256 hash
+      MessageDigest md = MessageDigest.getInstance("SHA256");
+      byte[] calculatedHash = md.digest(concat);
+      byte[] receivedHash = (byte[]) in.readObject();
+
+      Boolean executablesAreSame = Arrays.equals(calculatedHash, receivedHash);
+
+      if(executableNamesAreEqual && executablesAreSame){
         logger.log("AUTH :: Executable test passed.");
         out.writeObject(Response.OKTESTED);
       } else {
