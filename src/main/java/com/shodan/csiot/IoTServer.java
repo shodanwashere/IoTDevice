@@ -141,7 +141,7 @@ public class IoTServer {
       Cipher c = Cipher.getInstance(KEY_ALGORITHM);
 
       // get encryption parameters
-      ObjectInputStream ois = new ObjectInputStream(new FileInputStream("passwd.parameters"));
+      ObjectInputStream ois = new ObjectInputStream(new FileInputStream("encryption.parameters"));
       byte[] keyParameters = (byte[]) ois.readObject();
       AlgorithmParameters p = AlgorithmParameters.getInstance(KEY_ALGORITHM);
       p.init(keyParameters);
